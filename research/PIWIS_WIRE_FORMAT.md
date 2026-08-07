@@ -147,16 +147,36 @@ frame format, and the code are all confirmed good.
 Bracketing routines, both accepted: `31 25` (returned `71 25 01` after ~6 s of
 `responsePending`) and `31 22` (immediate).
 
-## SecurityAccess — five PCM pairs, still unsolved
+## SecurityAccess — SOLVED (recovered from PIWIS, 2026-08-07)
 
-One clean, accepted exchange:
+The seed/key is cracked, and we can unlock the PCM with no PIWIS.
+`tools/pcm_seedkey.py` computes the key; `pcm_slcan.py --step unlock` does the
+whole `27 01` → compute → `27 02` live. Verified on the bench: unit sent a fresh
+seed `EB48`, we sent key `0EF5`, PCM answered UNLOCKED.
+
+**Source:** PIWIS's own `ASAM_seedkey_PCM30.jar` (`D:\PiwisApps\PiwisApps\PIDT`),
+class `common/java/ASAM_seedkey_PCM30`, method `SecM_ComputeKey`. Its 14-byte
+config `__PCM3 = [8,0,3,0,12,15,5,10,8,8,1,3,2,0]` was read from a live instance
+by reflection; the Python port is byte-exact against the real Java for all
+65536 seeds.
+
+**Algorithm** (16-bit, KWP level 01/02): every parameter is chosen by bits of
+the seed itself — rotate count (4 bits), direction (1 bit), final op
+add/xor/not/none (2 bits). That data-dependence is why it resists a fixed
+rotate-then-op fit.
+
+Confirmed against three independent captured pairs:
 
 ```
-773  27 01           ->  7DD  67 01 6E 0F     seed 6E0F
-773  27 02 91 F0     ->  7DD  67 02 34        ACCEPTED
+773  27 01  ->  7DD  67 01 6E 0F     seed 6E0F -> key 91F0   ACCEPTED
+773  27 01  ->  7DD  67 01 92 63     seed 9263 -> key 017F   (our A3.2)
+773  27 01  ->  7DD  67 01 EB 48     seed EB48 -> key 0EF5   (live unlock)
 ```
 
-`0x6E0F + 0x91F0 = 0xFFFF` exactly — the key is the seed's one's complement.
+The old note that `6E0F + 91F0 = 0xFFFF` (one's complement) was a real but
+partial observation: seed `6E0F`'s op bits select the NOT branch, so its key is
+`~seed`. Other seeds rotate/add/xor instead, which is why the pattern never
+generalised before the algorithm was recovered.
 **That is a coincidence.** Scored against all five known pairs the complement
 rule reproduces only that one, and the byte-swap rule only reproduces `3D32`:
 

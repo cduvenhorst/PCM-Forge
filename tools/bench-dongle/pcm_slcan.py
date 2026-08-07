@@ -17,6 +17,7 @@ state, so a wrong guess costs a reboot at worst.
     python pcm_slcan.py --port COM6 --step all
 """
 import argparse
+import os
 import sys
 import time
 
@@ -24,6 +25,10 @@ try:
     import serial
 except ImportError:
     sys.exit("pyserial missing:  python -m pip install pyserial")
+
+# The recovered PCM 3.x SecurityAccess key generator lives one level up.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from pcm_seedkey import key_bytes                       # noqa: E402
 
 PCM_TX, PCM_RX = 0x773, 0x7DD
 PAD = 0xFF                       # the Autel pads with FF; match it exactly
@@ -195,6 +200,33 @@ def step(bus, payload_hex, note=""):
     r = request(bus, bytes.fromhex(payload_hex))
     print("    -> %-10s %-46s %s" % (payload_hex, describe(r), note))
     return r
+
+
+def unlock(bus, level=1):
+    """SecurityAccess: request seed, compute the key, send it. Returns True.
+
+    Uses the seed/key recovered from PIWIS (tools/pcm_seedkey.py), so this needs
+    no dealer tool and no ride-along. A seed of all zeros means the unit is
+    already unlocked. This is the gate in front of WriteDataByLocalIdentifier
+    (VIN, coding) and every security-protected service.
+    """
+    seed_resp = request(bus, bytes([0x27, level]))
+    if not seed_resp or seed_resp[0] != 0x67:
+        print("    seed request failed: %s"
+              % (seed_resp.hex().upper() if seed_resp else "no answer"))
+        return False
+    seed = seed_resp[2:4]                                # 67 01 <seed:2>
+    if seed == b"\x00\x00":
+        print("    seed 0000 -- already unlocked")
+        return True
+    key = key_bytes(seed)
+    print("    seed %s -> key %s" % (seed.hex().upper(), key.hex().upper()))
+    resp = request(bus, bytes([0x27, level + 1]) + key)
+    ok = bool(resp) and resp[0] == 0x67
+    print("    %s" % ("UNLOCKED" if ok
+                      else "rejected: %s" % (resp.hex().upper() if resp
+                                             else "no answer")))
+    return ok
 
 
 def ascii_of(b):
@@ -386,7 +418,7 @@ def main():
     ap.add_argument("--hold", type=int, default=30)
     ap.add_argument("--step", default="probe",
                     choices=["probe", "session", "ident", "version", "sweep",
-                             "local", "routines", "dtc", "all"])
+                             "local", "routines", "dtc", "unlock", "all"])
     ap.add_argument("--send", help="comma-separated hex payloads to send one "
                                    "at a time, e.g. 2701,311701")
     ap.add_argument("--no-session", action="store_true",
@@ -465,6 +497,11 @@ def main():
         if a.step in ("dtc", "all"):
             print("[dtc] fault memory")
             read_dtcs(bus)
+
+        if a.step == "unlock":
+            print("[unlock] SecurityAccess with the recovered PCM key")
+            step(bus, "1089", "open manufacturer session")
+            unlock(bus)
 
         if a.step in ("routines", "all"):
             print("\n[routines] one at a time")
