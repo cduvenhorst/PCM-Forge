@@ -327,9 +327,9 @@ function generateCode(vin, featHex) {
   return modpow(pt, D, N).toString(16).padStart(16, '0');
 }
 
-// ===== Chassis / retrofit (tequipment) activation =====
-// Reverse-engineered from PIWIS Keys.dll (VerifiziereFreischaltcode): a 38-char
-// base-36 positional substitution over 38 scrambled alphabets keyed by a selector.
+// ===== Chassis / retrofit activation =====
+// Offline substitution cipher worked out from the tester's own validation: a 38-char
+// base-36 positional substitution over a fixed set of scrambled alphabets.
 // DISABLED until validated against real (VIN, code) samples + per-feature functionIds.
 const CHASSIS_ENABLED = false;
 const TEQ_SEL = "VZB2C8D5E6F4GKI7JHX5TWPL1M3BN0QRUAS9Y";
