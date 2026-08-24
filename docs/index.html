@@ -255,7 +255,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="card-title">Chassis / retrofit activation
         <span style="font-family:var(--mono);font-size:10px;letter-spacing:1px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;margin-left:8px;vertical-align:middle">PREVIEW</span>
       </div>
-      <div class="panel-desc" style="margin-bottom:16px;line-height:1.7">
+      <div class="panel-desc" style="margin-bottom:16px;line-height:1.6;font-size:13px;color:var(--text2)">
         Activations that live in the <strong>steering-column module</strong>, not the PCM &mdash; the codes you enter after retrofitting a multifunction steering wheel: <strong>cruise control</strong>, the <strong>MFSW</strong> itself, and the <strong>heated wheel</strong>. Unlike the PCM's per-VIN RSA codes, these are a 38-character code the module validates locally, offline.
       </div>
       <div class="vin-row">
@@ -269,7 +269,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
     <div class="card">
       <div class="card-title">How it works</div>
-      <div class="panel-desc" style="line-height:1.7">
+      <div class="panel-desc" style="line-height:1.6;font-size:13px;color:var(--text2)">
         Recovered from PIWIS's own offline validator (<code>Keys.dll</code> &rarr; <code>VerifiziereFreischaltcode</code>): a 38-character base-36 positional substitution over 38 scrambled alphabets keyed by a fixed selector &mdash; no server, no RSA. The code encodes <code>VIN&nbsp;+&nbsp;functionId&nbsp;+&nbsp;nonce</code>, and the module checks the VIN+functionId part. The generator is finished and round-trips against the binary; the only thing left is each feature's function&nbsp;ID, which a single real sample confirms &mdash; then this tab goes live.
       </div>
     </div>
