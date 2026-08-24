@@ -259,9 +259,9 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         Activations that live in the <strong>steering-column module</strong>, not the PCM &mdash; the codes you enter after retrofitting a multifunction steering wheel: <strong>cruise control</strong>, the <strong>MFSW</strong> itself, and the <strong>heated wheel</strong>. Unlike the PCM's per-VIN RSA codes, these are a 38-character code the module validates locally, offline.
       </div>
       <div class="vin-row">
-        <input type="text" id="vinC" class="vin-input" maxlength="17" placeholder="Enter 17-digit VIN" autocomplete="off" spellcheck="false" disabled>
-        <select id="chassisFeat" class="vin-input" style="max-width:250px" disabled></select>
-        <button class="btn btn-go" onclick="chassisGenerate()" disabled>Generate</button>
+        <input type="text" id="vinC" class="vin-input" style="font-size:14px;letter-spacing:1px;padding:11px 14px" maxlength="17" placeholder="Enter 17-digit VIN" autocomplete="off" spellcheck="false" disabled>
+        <select id="chassisFeat" class="vin-input" style="max-width:230px;font-size:14px;letter-spacing:1px;padding:11px 14px" disabled></select>
+        <button class="btn btn-go" style="padding:11px 20px" onclick="chassisGenerate()" disabled>Generate</button>
       </div>
       <div id="errC" style="color:var(--red);font-size:13px;margin-top:8px;display:none"></div>
       <div id="chassis-result" class="status info" style="margin-top:16px;display:none"></div>
