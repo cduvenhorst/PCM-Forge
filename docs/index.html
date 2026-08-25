@@ -112,7 +112,6 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <button class="tab" onclick="switchTab('usb')"><span class="tab-icon">&#128190;</span>USB stick</button>
     <button class="tab" onclick="switchTab('toolkit')"><span class="tab-icon">&#128295;</span>Toolkit</button>
     <button class="tab" onclick="switchTab('backup')"><span class="tab-icon">&#128194;</span>Backup</button>
-    <button class="tab" onclick="switchTab('chassis')"><span class="tab-icon">&#128663;</span>Chassis</button>
   </div>
 
   <!-- TAB 1: Generate Codes -->
@@ -244,36 +243,6 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
   </div>
 
 
-  <!-- TAB 5: Chassis / retrofit activations (steering-column module) -->
-  <div id="tab-chassis" class="panel">
-    <div class="status info" style="display:flex;align-items:flex-start;gap:10px;margin-bottom:20px">
-      <span style="font-size:16px;line-height:1.4">&#128274;</span>
-      <span style="line-height:1.6"><strong>Pending validation &mdash; nothing generates yet.</strong> Chassis activation is reverse-engineered from the steering-column module and stays disabled until it's verified against real activation codes. This is a preview so you can see how it'll work.</span>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Chassis / retrofit activation
-        <span style="font-family:var(--mono);font-size:10px;letter-spacing:1px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;margin-left:8px;vertical-align:middle">PREVIEW</span>
-      </div>
-      <div class="panel-desc" style="margin-bottom:16px;line-height:1.6;font-size:13px;color:var(--text2)">
-        Activations that live in the <strong>steering-column module</strong>, not the PCM &mdash; the codes you enter after retrofitting a multifunction steering wheel: <strong>cruise control</strong>, the <strong>MFSW</strong> itself, and the <strong>heated wheel</strong>. Unlike the PCM's per-VIN RSA codes, these are a 38-character code the module validates locally, offline.
-      </div>
-      <div class="vin-row">
-        <input type="text" id="vinC" class="vin-input" style="font-size:14px;letter-spacing:1px;padding:11px 14px" maxlength="17" placeholder="Enter 17-digit VIN" autocomplete="off" spellcheck="false" disabled>
-        <select id="chassisFeat" class="vin-input" style="max-width:230px;font-size:14px;letter-spacing:1px;padding:11px 14px" disabled></select>
-        <button class="btn btn-go" style="padding:11px 20px" onclick="chassisGenerate()" disabled>Generate</button>
-      </div>
-      <div id="errC" style="color:var(--red);font-size:13px;margin-top:8px;display:none"></div>
-      <div id="chassis-result" class="status info" style="margin-top:16px;display:none"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">How it works</div>
-      <div class="panel-desc" style="line-height:1.6;font-size:13px;color:var(--text2)">
-        Worked out from the tester's own <strong>offline</strong> validation &mdash; no online server, and not the PCM's per-VIN RSA. It's a 38-character base-36 code: a positional substitution over a fixed set of scrambled alphabets that encodes <code>VIN&nbsp;+&nbsp;feature&nbsp;ID&nbsp;+&nbsp;nonce</code>, and the module checks the VIN+feature part locally. The generator is finished and self-consistent; the only piece left is each feature's ID, which a single real code confirms &mdash; then this tab goes live.
-      </div>
-    </div>
-  </div>
 
   <div class="footer">
     <a href="https://github.com/dspl1236/PCM-Forge">github.com/dspl1236/PCM-Forge</a> &mdash; open source &mdash; 64-bit RSA cracked from QNX firmware
@@ -325,63 +294,6 @@ function generateCode(vin, featHex) {
   const vh = vinToNumber(vin).toString(16).padStart(8, '0');
   const pt = BigInt('0x' + interleave(featHex, vh));
   return modpow(pt, D, N).toString(16).padStart(16, '0');
-}
-
-// ===== Chassis / retrofit activation =====
-// Offline substitution cipher worked out from the tester's own validation: a 38-char
-// base-36 positional substitution over a fixed set of scrambled alphabets.
-// DISABLED until validated against real (VIN, code) samples + per-feature functionIds.
-const CHASSIS_ENABLED = false;
-const TEQ_SEL = "VZB2C8D5E6F4GKI7JHX5TWPL1M3BN0QRUAS9Y";
-const TEQ_TABLES = ["YXC0V9B8N7M6A5S4D3F2G1HJKLPOIUZTREWQ","1QP9WO0EI8RU2TZ7AL3SK6DJ4FH5GMYNXCBV","E3RQ1W2U7I8O4T5Z6GHJKLYXC9P0ASDFVBNM","B8C0V96AN7M3F2G5JKLPIUZTOS4D1HREWQYX","AV3F26N7M9LPIUG5JZTOSKWQY4D1HXBRE8C0","P6IUBRE8C0AV3FN7M9LJZ25TOSKWQY4DG1HX","FHJKOU3DG4SQ12E6MI9LP5C0BN7Z8TRWXAYV","DFVBNME3AS7I8O4T5Z6GHJKLYXC9P0RQ1W2U","ZTOS4D1N7M3FEWQYHR2GX5JKLPIUB8C0V96A","JKLPOH5S4D3IUZTREWQYXC0V9N7M6AB8F2G1","N7WXAQZ8TR1FC0YV2E6MI9LP5BHJKOU3DG4S","DBO4T5Z6GHEC9P0AS3RQ1JKLYXNMW2U7I8FV","V9B8YXC04D3F2G1HJN7M6A5SKLPOIUZTREWQ","Q1FHJKOU3DG4SC0B2E6MI9LP5N7Z8TRWXAYV","1Z5C0B8N7FHJKOUTRWQXAYV23DGE6MI9LP4S","6N7M9LPIUG5JKWQY4D1HXBZTOSAV3F2RE8C0","PIU6N7M9LHXBZTOSG5JKWQY4D18CAV3F2RE0","Z8AQC0TR1FMI9YV2E6KOULP5BHJ3DG4N7WXS","0Z8AQCI9YTR1FMULPV2E6KO4N7WXS5BHJ3DG","9ZT3F6OSEW4D1NHR2GB8CKL7MX5JQYPIUA0V","JZ25TOSKE8CBR7M9L0AV3FNWQY4DG1HXP6IU","OU3DP5C0B2E6MI9LN7Z8TRWXAYVFHJKG4SQ1","FMI0TR16K9YV2EHJ3DGOULP5B4N7WXSZ8AQC","0V9B4D3HJ2G1LPOIUZTREWQ8YXCN7M6A5SKF","1W2UDFVBXC9P0RI8O43AS7LYT5Z6GHJKQNME","LPIUG6N7MF2RE8C0WQY95JKXBZTOSAV34D1H","JBNME3KL7I8O4FVASYXC9P0RQ1W2UDT5Z6GH","H5SZTREWQY4D3IUN7M6AXC0V9B8F2GJKLPO1","U6N7PIZTOSG5M9LHXBD18CAJKWQY4V3F2RE0","JKOU3DZN7WXAQYV28TR1FC05BHE6MI9LPG4S","9LHXZTOSG5JKW4D18CAV3F2RE0BPIU6N7MQY","OUFHSQ1JK3DG45C0B2E6MI9LPWXAYVN7Z8TR","T5Z6GHJKL7I8O4FVBNME3ASYXC9P0RQ1W2UD","JKE8CZ25TOSV3FNWQY4DG1HXP6IUBR7M9L0A","FHJOU3DP5C0B2EKI9LN7Z8TRWXAYVG4SQ16M","5Z6GHEC9P0AS3KYRLQ1JXNMW2U7I8FVDBO4T","V9B8F2YXC04D3SKG1HJN7M6A5ELPOIUZTRWQ","RI9YV2E61FMZ8AQCJ3DG4N7WXS0TKOULP5BH"];
-const TEQ_N = TEQ_SEL.length;
-const TEQ_OFF = [];
-for (let t = 0; t < TEQ_N; t++) TEQ_OFF.push(TEQ_TABLES[t].indexOf(TEQ_SEL[t]));
-// functionId is a 5-char id read from the ECU -- unknown until a real sample confirms it.
-const CHASSIS_FEATURES = [
-  { key: 'cruise', label: 'Cruise control (Tempomat)',    functionId: null },
-  { key: 'mfsw',   label: 'Multifunction steering wheel', functionId: null },
-  { key: 'heated', label: 'Heated steering wheel',        functionId: null },
-];
-function teqEncode(pt) {
-  let o = '';
-  for (let i = 0; i < pt.length; i++) {
-    const t = TEQ_TABLES[i % TEQ_N];
-    o += t[(t.indexOf(pt[i]) + TEQ_OFF[i % TEQ_N]) % 36];
-  }
-  return o;
-}
-function teqGenerate(vin, functionId, nonce) { return teqEncode(vin + functionId + nonce); }
-function chassisInit() {
-  const sel = document.getElementById('chassisFeat');
-  if (!sel) return;
-  sel.innerHTML = CHASSIS_FEATURES.map(f => '<option value="' + f.key + '">' + f.label + '</option>').join('');
-  if (CHASSIS_ENABLED) {
-    document.getElementById('vinC').disabled = false;
-    sel.disabled = false;
-    document.querySelector('#tab-chassis .btn-go').disabled = false;
-  }
-}
-function chassisGenerate() {
-  const box = document.getElementById('chassis-result');
-  if (!CHASSIS_ENABLED) {
-    box.className = 'status info'; box.style.display = 'block';
-    box.innerHTML = '&#128274; Disabled &mdash; awaiting validation against real activation codes.';
-    return;
-  }
-  const vin = (document.getElementById('vinC').value || '').trim().toUpperCase();
-  const err = document.getElementById('errC');
-  if (vin.length !== 17) { err.textContent = 'VIN must be 17 characters'; err.style.display = 'block'; return; }
-  err.style.display = 'none';
-  const feat = CHASSIS_FEATURES.find(f => f.key === document.getElementById('chassisFeat').value);
-  if (!feat || !feat.functionId) {
-    box.className = 'status err'; box.style.display = 'block';
-    box.textContent = 'The function ID for this feature is not confirmed yet.';
-    return;
-  }
-  const code = teqGenerate(vin, feat.functionId, 'AAAAAAAAAAAAAAAA');
-  box.className = 'status ok'; box.style.display = 'block';
-  box.innerHTML = '<strong>' + feat.label + '</strong> &mdash; <span style="font-family:var(--mono)">' + code + '</span>';
 }
 
 // ===== Models =====
@@ -712,13 +624,12 @@ function dlMergedUSB(){
 function switchTab(id) {
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', 
-      (i === 0 && id === 'generate') || (i === 1 && id === 'usb') || (i === 2 && id === 'toolkit') || (i === 3 && id === 'backup') || (i === 4 && id === 'chassis'));
+      (i === 0 && id === 'generate') || (i === 1 && id === 'usb') || (i === 2 && id === 'toolkit') || (i === 3 && id === 'backup'));
   });
   document.getElementById('tab-generate').classList.toggle('active', id === 'generate');
   document.getElementById('tab-usb').classList.toggle('active', id === 'usb');
   document.getElementById('tab-backup').classList.toggle('active', id === 'backup');
   document.getElementById('tab-toolkit').classList.toggle('active', id === 'toolkit');
-  document.getElementById('tab-chassis').classList.toggle('active', id === 'chassis');
   if (id === 'usb') usbBuildFeatureGrid();
   if (id === 'toolkit') tkRenderModules();
 }
@@ -1400,7 +1311,6 @@ async function tkBuild() {
 
 // Auto-render toolkit if tab is already active on load
 if (document.getElementById('tab-toolkit') && document.getElementById('tab-toolkit').classList.contains('active')) tkRenderModules();
-chassisInit();
 
 </script>
 </body>
