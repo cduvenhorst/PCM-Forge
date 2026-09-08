@@ -875,3 +875,107 @@ class TestVinValidation:
 
     def test_a_valid_vin_is_accepted_lowercase(self, tmp_path):
         assert gc.main([VIN.lower(), str(tmp_path), '--quiet']) == 0
+
+
+class TestVinStructure:
+    """Hard rules from ISO 3779/3780. Every one holds across the 28 real
+    Porsche VINs in this repository."""
+
+    def test_rejects_a_forbidden_letter(self):
+        # Placed mid-VIN on purpose: at the end the numeric-tail rule would
+        # fire first and the test would pass without exercising this one.
+        for bad in ('WP1IZZ92ZFLA12345', 'WP1OZZ92ZFLA12345', 'WP1QZZ92ZFLA12345'):
+            with pytest.raises(ValueError, match='ISO 3779'):
+                gc.validate_vin(bad)
+
+    def test_the_forbidden_letter_is_named(self):
+        with pytest.raises(ValueError, match='I'):
+            gc.validate_vin('WP1IZZ92ZFLA12345')
+
+    def test_rejects_a_non_alphanumeric_character(self):
+        with pytest.raises(ValueError):
+            gc.validate_vin('WP1ZZZ92ZFLA-2345')
+
+    def test_rejects_non_numeric_last_four(self):
+        # ISO 3779 requires the final four characters to be numeric.
+        with pytest.raises(ValueError):
+            gc.validate_vin('WP1ZZZ92ZFLA123A5')
+
+    def test_rejects_a_digit_in_first_position(self):
+        # ISO 3780: position 1 is the geographic area, always a letter.
+        with pytest.raises(ValueError):
+            gc.validate_vin('1P1ZZZ92ZFLA12345')
+
+    def test_still_rejects_the_wrong_length(self):
+        with pytest.raises(ValueError):
+            gc.validate_vin('WP1ZZZ')
+
+    def test_accepts_every_real_vin_in_the_repository(self):
+        for _row, vin, _name, _code in factory_cells():
+            gc.validate_vin(vin)
+
+    def test_uppercases_its_result(self):
+        assert gc.validate_vin('wp1zzz92zfla12345') == 'WP1ZZZ92ZFLA12345'
+
+
+class TestVinAdvisories:
+    """Soft checks: they inform, they never block. Each one is advisory for a
+    measured reason, not out of caution."""
+
+    def test_a_plain_porsche_vin_draws_no_comment(self):
+        assert gc.vin_advisories('WP1ZZZ92ZFLA12345') == []
+
+    def test_flags_a_non_porsche_wmi(self):
+        notes = gc.vin_advisories('WVWZZZ92ZFLA12345')
+        assert notes and any('WVW' in n for n in notes)
+
+    def test_names_volkswagen_for_a_wvw_vin(self):
+        assert any('Volkswagen' in n for n in gc.vin_advisories('WVWZZZ92ZFLA12345'))
+
+    def test_accepts_any_third_wmi_character(self):
+        # WP0 sports cars, WP1 SUVs -- and whatever Porsche assigns next.
+        for wmi in ('WP0', 'WP1', 'WP2', 'WP9'):
+            assert gc.vin_advisories(wmi + 'ZZZ92ZFLA12345') == [], wmi
+
+    def test_ignores_position_nine_when_it_is_a_filler(self):
+        # 13 of 22 factory VINs carry 'Z' there: no check digit to verify.
+        # This VIN is a 2008 car, so it draws the model-year note -- what
+        # matters here is that no check-digit note appears alongside it.
+        notes = gc.vin_advisories('WP0ZZZ97Z8L040010')
+        assert not any('check digit' in n.lower() for n in notes), notes
+
+    def test_flags_a_broken_check_digit(self):
+        good = 'WP0AB2A78AL060050'
+        assert gc.vin_advisories(good) == []
+        broken = good[:8] + '7' + good[9:]
+        assert any('check digit' in n.lower() for n in gc.vin_advisories(broken))
+
+    def test_flags_a_model_year_outside_the_pcm31_era(self):
+        notes = gc.vin_advisories('WP1ZZZ9PZ6LA46923')     # position 10 '6' = 2006
+        assert any('2006' in n for n in notes)
+
+    def test_accepts_the_2010_panameras_from_the_factory_data(self):
+        for vin in ('WP0AB2A78AL060050', 'WP0AC2A78AL090033'):
+            assert gc.vin_advisories(vin) == [], vin
+
+    def test_every_repository_vin_from_the_pcm31_era_is_quiet(self):
+        noisy = [v for _r, v, _n, _c in factory_cells()
+                 if gc.vin_advisories(v) and v[9] in 'ABCDEFGHJ']
+        assert not noisy, noisy
+
+
+class TestVinAdvisoriesReachTheUser:
+    def test_a_suspect_vin_is_reported_but_still_processed(self, tmp_path, capsys):
+        assert gc.main(['WVWZZZ92ZFLA12345', str(tmp_path), '--quiet']) == 0
+        assert 'WVW' in capsys.readouterr().err
+        assert (tmp_path / 'PagSWAct.002').exists()
+
+    def test_quiet_does_not_hide_them(self, tmp_path, capsys):
+        gc.main(['WVWZZZ92ZFLA12345', str(tmp_path), '--quiet'])
+        assert 'WVW' in capsys.readouterr().err
+
+    def test_from_backup_reports_them_too(self, tmp_path, capsys):
+        make_diag_stick(tmp_path, vin='WVWZZZ92ZFLA12345')
+        gc.main(['WVWZZZ92ZFLA12345', str(tmp_path), '--from-backup',
+                 '--add', 'SDARS', '--quiet'])
+        assert 'WVW' in capsys.readouterr().err

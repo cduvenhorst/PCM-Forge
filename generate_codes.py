@@ -427,11 +427,111 @@ def write_usb(out, run_sh, xor=True, pagswact=None):
             d.write(s.read())
 
 
+# ISO 3779 bars I, O and Q from a VIN so they cannot be misread as 1 and 0.
+VIN_FORBIDDEN = set('IOQ')
+
+# Position 10 carries the model year. The letters run A-Y with I, O, Q, U and Z
+# left out; digits 1-9 cover 2001-2009. The scheme repeats every 30 years, so
+# 'B' is 1981 as much as 2011 -- for a PCM 3.1 car only the recent reading is
+# plausible, which is all this table is used for.
+VIN_MODEL_YEAR = {c: 2001 + i for i, c in enumerate('123456789')}
+VIN_MODEL_YEAR.update({c: 2010 + i for i, c in enumerate('ABCDEFGHJKLMNPRSTVWXY')})
+
+# PCM 3.1 shipped in the 2010-2018 model years. The README says 2011, but two
+# genuine MY2010 Panameras sit in research/firmware/PagSWAct.csv, so the lower
+# bound here is deliberately one year wider than the README's.
+PCM31_MODEL_YEARS = range(2010, 2019)
+
+# Weights and character values of the check digit defined by 49 CFR 565. It is
+# a North American requirement, not part of ISO 3779: European VINs carry a
+# filler at position 9 instead -- 13 of the 22 factory VINs use 'Z'.
+_CHECK_WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+# Letter values: A-H are 1-8, J-N are 1-5, P is 7, R is 9, S-Z are 2-9.
+_CHECK_VALUES = {c: int(c) for c in '0123456789'}
+for _i, _c in enumerate('ABCDEFGH'):
+    _CHECK_VALUES[_c] = _i + 1
+for _i, _c in enumerate('JKLMN'):
+    _CHECK_VALUES[_c] = _i + 1
+_CHECK_VALUES.update({'P': 7, 'R': 9})
+for _i, _c in enumerate('STUVWXYZ'):
+    _CHECK_VALUES[_c] = _i + 2
+
+def vin_check_digit(vin):
+    """The character position 9 should hold under 49 CFR 565, or None."""
+    try:
+        total = sum(_CHECK_VALUES[c] * w for c, w in zip(vin, _CHECK_WEIGHTS))
+    except KeyError:
+        return None
+    rest = total % 11
+    return 'X' if rest == 10 else str(rest)
+
+def vin_advisories(vin):
+    """Things worth telling the user about a VIN, none of them fatal.
+
+    Every entry here is advisory rather than an error for a reason measured
+    against the 28 real VINs in this repository -- see the comments.
+    """
+    notes = []
+
+    # Porsche's WMIs are WP0 (sports cars) and WP1 (SUVs); ISO 3780 puts the
+    # manufacturer in the first two characters, so any third one still reads as
+    # Porsche. Not an error: the list of Porsche WMIs cannot be verified here,
+    # and blocking a car that is simply missing from it would be worse than a
+    # note. WVW is reported to appear on rare Porsche paperwork.
+    if vin[:2] != 'WP':
+        maker = {'WVW': 'Volkswagen', 'WAU': 'Audi', 'WBA': 'BMW',
+                 'WDB': 'Mercedes-Benz', 'WDD': 'Mercedes-Benz'}.get(vin[:3])
+        who = f" -- normally {maker}" if maker else ""
+        notes.append(f"WMI '{vin[:3]}' is not a Porsche one{who}. "
+                     f"Porsche VINs usually start WP0 or WP1. Continuing.")
+
+    # Only verify the check digit where there is one. A European VIN could in
+    # principle carry a digit here without it being a check digit, so this
+    # stays a note -- but position 9 feeds the VIN hash, so a typo there
+    # changes every generated code.
+    if vin[8].isdigit() or vin[8] == 'X':
+        want = vin_check_digit(vin)
+        if want is not None and want != vin[8]:
+            notes.append(f"check digit is '{vin[8]}' but the other characters "
+                         f"give '{want}' -- typo? Continuing.")
+
+    year = VIN_MODEL_YEAR.get(vin[9])
+    if year is not None and year not in PCM31_MODEL_YEARS:
+        notes.append(f"model year looks like {year}; PCM 3.1 shipped "
+                     f"{PCM31_MODEL_YEARS[0]}-{PCM31_MODEL_YEARS[-1]}. "
+                     f"Wrong car for this tool? Continuing.")
+    return notes
+
+def report_vin_advisories(vin):
+    """Print anything odd about a VIN. Not silenced by --quiet: these say the
+    generated codes may be for the wrong car."""
+    for note in vin_advisories(vin):
+        print(f"  Note: {note}", file=sys.stderr)
+
+
 def validate_vin(raw):
-    """Uppercase a VIN, or raise ValueError explaining what is wrong."""
+    """Uppercase a VIN and check it against ISO 3779/3780.
+
+    Only structural rules are enforced here; anything that merely looks
+    suspicious is left to vin_advisories, which informs instead of blocking.
+    """
     vin = raw.upper()
     if len(vin) != 17:
         raise ValueError(f"VIN must be 17 characters (got {len(vin)})")
+    bad = sorted({c for c in vin if not (c.isascii() and c.isalnum())})
+    if bad:
+        raise ValueError(f"VIN may only hold letters and digits "
+                         f"(found {', '.join(repr(c) for c in bad)})")
+    forbidden = sorted(VIN_FORBIDDEN & set(vin))
+    if forbidden:
+        raise ValueError(f"ISO 3779 bars {', '.join(forbidden)} from a VIN "
+                         f"(too easily confused with 1 and 0)")
+    if not vin[13:].isdigit():
+        raise ValueError(f"ISO 3779 requires the last four characters to be "
+                         f"numeric (got '{vin[13:]}')")
+    if not vin[0].isalpha():
+        raise ValueError(f"ISO 3780 makes position 1 the geographic area, "
+                         f"always a letter (got '{vin[0]}')")
     return vin
 
 def features_from_args(args):
@@ -659,6 +759,7 @@ def build_from_backup(args):
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+        report_vin_advisories(vin)
         signed_for = backup_vin_hash(recs)
         ours = f"{vin_to_number(vin):08x}"
         if signed_for and signed_for != ours:
@@ -801,6 +902,7 @@ def main(argv=None):
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    report_vin_advisories(vin)
 
     if args.add or args.remove:
         names = split_feature_names(args.add or args.remove)
