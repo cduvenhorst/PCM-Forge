@@ -185,7 +185,7 @@ python generate_codes.py --list-features                    # feature names
 | `--model KEY` | Sets the FeatureLevel, which is the boot logo and model identity |
 | `--featlevel-subid HEX` | The same thing by number, for a model the table does not list |
 | `--add`, `--remove` | Edit features in an existing `PagSWAct.002`; comma-separated, repeatable |
-| `--from-backup [FILE]` | Rebuild an activation stick from the car's own backup, reading the VIN off the stick; name the file when several backups are present |
+| `--from-backup` | Rebuild an activation stick from what the car reported, using the `<USB_PATH>` the diagnostic run wrote — its backup and its VIN. Takes no argument; only when that stick holds several backups, name the one to use: `--from-backup PagSWAct_backup_1234.002` |
 | `--subid NAME=HEX` | Pick a non-default variant of a feature (map index, region) |
 | `--no-xor` | Write `copie_scr.sh` unencoded — for inspection only, the PCM will not run it |
 | `--quiet` | Codes only, no headings |

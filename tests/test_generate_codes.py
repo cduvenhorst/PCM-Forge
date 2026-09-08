@@ -798,6 +798,13 @@ class TestFromBackup:
         chosen = str(tmp_path / 'PagSWAct_backup_20250202_000000.002')
         assert gc.main([str(tmp_path), '--from-backup', chosen, '--quiet']) == 0
 
+    def test_a_bare_backup_name_is_looked_up_on_the_stick(self, tmp_path):
+        """The error listing names files, so a bare name has to be accepted."""
+        make_diag_stick(tmp_path, backup_name='PagSWAct_backup_20250101_000000.002')
+        make_diag_stick(tmp_path, backup_name='PagSWAct_backup_20250202_000000.002')
+        assert gc.main([str(tmp_path), '--from-backup',
+                        'PagSWAct_backup_20250202_000000.002', '--quiet']) == 0
+
     def test_warns_before_replacing_an_existing_activation_file(self, tmp_path, capsys):
         make_diag_stick(tmp_path)
         (tmp_path / 'PagSWAct.002').write_bytes(

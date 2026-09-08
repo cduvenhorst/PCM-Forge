@@ -580,11 +580,17 @@ def find_backup(usb_path, explicit=''):
     Deliberately ignores a plain PagSWAct.002: that one is a file we wrote,
     while the backup is what the car itself reported. Raises ValueError when
     the choice is not obvious.
+
+    An explicit choice may be a bare file name -- that is what the ambiguity
+    message lists -- and is then looked for on the stick.
     """
     if explicit:
-        if not os.path.exists(explicit):
-            raise ValueError(f"{explicit} not found")
-        return explicit
+        if os.path.exists(explicit):
+            return explicit
+        on_stick = os.path.join(usb_path, explicit)
+        if os.path.exists(on_stick):
+            return on_stick
+        raise ValueError(f"{explicit} not found")
     if not os.path.isdir(usb_path):
         raise ValueError(f"{usb_path} is not a directory")
     backups = sorted(f for f in os.listdir(usb_path)
@@ -918,8 +924,9 @@ def parse_args(argv):
                    help='Select a non-default SubID variant, e.g. '
                         'NavDBEurope=0x0001. Repeatable.')
     p.add_argument('--from-backup', nargs='?', const='', default=None, metavar='FILE',
-                   help="Build an activation stick from the car's own backup "
-                        "(PagSWAct_backup_*.002). Name the file when several exist.")
+                   help="Build an activation stick from the backup and VIN a "
+                        "diagnostic run left on USB_PATH. Only when that stick "
+                        "holds several PagSWAct_backup_*.002, name the one to use.")
     p.add_argument('--no-xor', action='store_true',
                    help='Write copie_scr.sh as plaintext (testing only; the PCM needs XOR)')
     return p.parse_args(argv)
