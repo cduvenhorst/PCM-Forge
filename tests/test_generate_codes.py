@@ -979,3 +979,47 @@ class TestVinAdvisoriesReachTheUser:
         gc.main(['WVWZZZ92ZFLA12345', str(tmp_path), '--from-backup',
                  '--add', 'SDARS', '--quiet'])
         assert 'WVW' in capsys.readouterr().err
+
+
+class TestShowNamesTheModel:
+    """The FeatureLevel SubID is the car's model identity -- the single most
+    telling thing in a PagSWAct.002. --show must resolve it, not print the raw
+    number."""
+
+    def _row(self, capsys, name='FeatureLevel'):
+        return next(l for l in capsys.readouterr().out.splitlines()
+                    if l.strip().startswith(name))
+
+    def test_names_the_model_behind_the_subid(self, tmp_path, capsys):
+        gc.main([VIN, str(tmp_path), '--quiet', '--model', 'cayenne-se'])
+        capsys.readouterr()
+        gc.main(['--show', str(tmp_path)])
+        assert 'Cayenne S E-Hybrid' in self._row(capsys)
+
+    def test_names_a_different_model_correctly(self, tmp_path, capsys):
+        gc.main([VIN, str(tmp_path), '--quiet', '--model', 'boxster-alt'])
+        capsys.readouterr()
+        gc.main(['--show', str(tmp_path)])
+        assert 'Boxster' in self._row(capsys)
+
+    def test_does_not_call_the_model_a_variant(self, tmp_path, capsys):
+        # Every car carries its own FeatureLevel SubID, so "variant" and
+        # "default" are the wrong words for it.
+        gc.main([VIN, str(tmp_path), '--quiet', '--model', 'cayenne-se'])
+        capsys.readouterr()
+        gc.main(['--show', str(tmp_path)])
+        row = self._row(capsys)
+        assert 'variant' not in row.lower() and 'default' not in row.lower(), row
+
+    def test_an_unmapped_subid_says_so(self, tmp_path, capsys):
+        rec = gc.build_record(VIN, '010e0999', 0x010e, 0x0999)
+        (tmp_path / 'PagSWAct.002').write_bytes(bytes(rec))
+        gc.main(['--show', str(tmp_path)])
+        row = self._row(capsys)
+        assert '0x0999' in row and 'unknown' in row.lower(), row
+
+    def test_other_features_still_get_the_variant_note(self, tmp_path, capsys):
+        gc.main([VIN, str(tmp_path), '--quiet', '--subid', 'NavDBEurope=0x0001'])
+        capsys.readouterr()
+        gc.main(['--show', str(tmp_path)])
+        assert 'variant' in self._row(capsys, 'NavDBEurope').lower()

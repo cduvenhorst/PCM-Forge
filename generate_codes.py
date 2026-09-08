@@ -281,6 +281,15 @@ def build_pagswact(vin, features):
 # XOR PRNG cipher -- matches proc_scriptlauncher in the PCM 3.1 / MMI3G firmware.
 # The launcher XOR-decodes copie_scr.sh before running it, so a plaintext script
 # decodes to garbage and is silently ignored (research/DISCOVERY_NARRATIVE.md).
+# FeatureLevel SubID -> model name. MODELS is keyed by CLI name; --show needs
+# the other direction to turn a record back into the car it describes.
+MODEL_BY_SUBID = {subid: desc for subid, desc in MODELS.values()}
+
+# The FeatureLevel record is the car's identity rather than a feature toggle,
+# so --show treats it apart from the rest.
+FEATURELEVEL_SWID = 0x010e
+
+
 SUBID_WILDCARD = 0xffff  # record header value meaning "any SubID"
 
 XOR_SEED_INIT = 0x001be3ac
@@ -684,7 +693,11 @@ def show_pagswact(path, vin=None):
                 vin_hashes.add(vin_half)
         except ValueError:
             notes.append('! code is not valid hex')
-        if subid == SUBID_WILDCARD:
+        if swid == FEATURELEVEL_SWID:
+            # Not a variant of anything: every car has its own value here.
+            model = MODEL_BY_SUBID.get(subid)
+            notes.append(model if model else f'unknown model 0x{subid:04x}')
+        elif subid == SUBID_WILDCARD:
             if signed_subid is not None:
                 notes.append(f'wildcard header, signed 0x{signed_subid:04x}')
         elif entry and subid != entry[3]:
