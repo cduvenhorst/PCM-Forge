@@ -161,6 +161,77 @@ If you installed a used PCM from another car, activation codes won't work becaus
 3. In the Engineering menu, update the VIN to your car's VIN (under SW Activations)
 4. Re-run PCM-Forge with your real VIN to activate all features
 
+## Command Line
+
+`generate_codes.py` does everything the web app does, from a terminal. Same algorithm, same
+files, same bytes — the test suite checks that byte for byte. Useful for scripting, for
+inspecting a stick that came back from the car, and for anything you would rather not do by
+clicking. Python 3 and the standard library, nothing to install.
+
+```sh
+python generate_codes.py <VIN>                              # print all 27 codes
+python generate_codes.py <VIN> <USB_PATH>                   # build an activation stick
+python generate_codes.py --diag <USB_PATH>                  # build a diagnostic stick
+python generate_codes.py --show <PATH>                      # decode a PagSWAct.002
+python generate_codes.py --list-models                      # model keys for --model
+python generate_codes.py --list-features                    # feature names
+```
+
+| Flag | What it does |
+|------|--------------|
+| `--model KEY` | Sets the FeatureLevel, which is the boot logo and model identity |
+| `--add`, `--remove` | Edit features in an existing `PagSWAct.002`; comma-separated, repeatable |
+| `--from-backup [FILE]` | Rebuild an activation stick from the car's own backup |
+| `--subid NAME=HEX` | Pick a non-default variant of a feature (map index, region) |
+| `--no-xor` | Write `copie_scr.sh` unencoded — for inspection only, the PCM will not run it |
+| `--quiet` | Codes only, no headings |
+
+The usual round trip, once per car:
+
+```sh
+python generate_codes.py --diag /Volumes/STICK        # 1. pull the car's current state
+python generate_codes.py --show /Volumes/STICK        # 2. read what came back
+python generate_codes.py <VIN> /Volumes/STICK --from-backup --add SDARS,TEL   # 3. add to it
+```
+
+Step 1 needs no VIN — which matters, because with a used head unit the diagnostic run is how
+you find out which VIN it holds. `--from-backup` keeps everything the car already had and
+adds to it, instead of replacing the lot.
+
+A VIN is checked against ISO 3779/3780 before anything is generated: 17 characters, no I, O or
+Q, numeric tail. Anything that is merely suspicious — a non-Porsche WMI, a check digit that
+does not add up, a model year outside the PCM 3.1 era — is reported and then ignored, because
+none of those is reliable enough to refuse work over.
+
+### Running the tests
+
+Only needed if you change something. `pytest` is the sole dependency and only the tests use it.
+
+```sh
+pip install pytest
+python -m pytest tests/ -q                                   # all of it, about a third of a second
+python -m pytest tests/ -k factory -v                        # one group
+python -m pytest tests/test_generate_codes.py::TestShow -v   # one class
+```
+
+What the suite is actually guarding:
+
+- **Real factory codes.** `research/firmware/PagSWAct.csv` holds 487 genuine activation codes
+  from 22 cars. The tests decrypt each one with the public exponent — the same operation the
+  head unit performs — and require it to yield its own SWID and VIN hash. This is the only
+  check in the project that does not share the code's own assumptions, so treat a failure here
+  as the algorithm being wrong rather than the test.
+- **Parity with the web app.** Feature names, hex values, the ksh payloads and the encoded
+  bootstrap are compared against `docs/index.html`. Changing one side without the other fails
+  the suite on purpose: the two must emit identical sticks.
+- **Line endings.** `payloads/*.sh` must stay LF. A CRLF that reaches the head unit's shell
+  stops the script dead, and the failure on the car is silent.
+
+If you add a check, sabotage it once before you trust it: break the thing it is meant to catch
+and confirm the test fails. Several tests here passed at first for the wrong reason — a VIN
+whose forbidden letter sat where a different rule caught it first, an assertion that matched
+the temporary directory's name rather than the output.
+
 ## How It Works
 
 ### Activation Algorithm

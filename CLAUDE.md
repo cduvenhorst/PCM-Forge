@@ -20,9 +20,11 @@ project has three layers:
    parallel, self-contained RE effort for the newer MIB2-based PCM 4 (different platform,
    different unlock chain — see `PCM4/README.md`).
 
-There is no build system, package manager, or test suite. This is a static site plus a
-collection of independent Python/shell scripts — changes are validated by reasoning and by
-running the relevant script directly.
+There is no build system or package manager. The web app and the module scripts are
+validated by reasoning and by running them; `generate_codes.py` has a pytest suite in
+`tests/` (`python -m pytest tests/ -q`), which also guards its byte-for-byte parity with the
+web app and checks the algorithm against genuine factory codes in
+`research/firmware/PagSWAct.csv`. Run it after touching either side.
 
 ## Working with the web app (`docs/index.html`)
 
@@ -79,14 +81,18 @@ See each tool's own `--help`/docstring; `tools/README.md` and `PCM4/tools/README
 
 Standalone CLI, no dependencies beyond stdlib:
 ```sh
-python generate_codes.py <VIN>                       # list all 26 codes (911 model default)
-python generate_codes.py <VIN> <USB_PATH>             # write PagSWAct.002 to a USB path
-python generate_codes.py <VIN> --model <key>           # pick a model for correct FeatureLevel/boot logo
+python generate_codes.py <VIN>                       # list all 27 codes (911 model default)
+python generate_codes.py <VIN> <USB_PATH>             # build an activation stick
+python generate_codes.py --diag <USB_PATH>            # build a diagnostic stick (no VIN needed)
+python generate_codes.py --show <PATH>                # decode an existing PagSWAct.002
+python generate_codes.py <VIN> <USB_PATH> --from-backup --add TEL   # edit the car's own set
 python generate_codes.py --list-models                 # show all model keys
 ```
 The RSA-64 keys (`N`, `E`, `D`) and per-feature SWID/SubID tables live at the top of the file.
-`tools/prepare_usb.py` wraps the same algorithm to build a full USB payload (`PagSWAct.002` +
-LF-encoded `copie_scr.sh`) in one step. The algorithm write-up is in
+The ksh payloads the stick carries live in `payloads/` as real `.sh` files, so
+`.gitattributes` keeps them LF; `copie_scr.sh` is generated and XOR-encoded at write time.
+`tools/prepare_usb.py` is an older, narrower wrapper around the same algorithm and predates
+all of the above. The algorithm write-up is in
 `research/ALGORITHM_CRACKED.md`; the full feature list with costs/hardware requirements is in
 `FEATURES.md`.
 
