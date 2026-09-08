@@ -98,17 +98,6 @@ driver never reaches the data partition, so the autorun silently never fires. Yo
 this by reformatting — the problem sits below the file system. Check the drive's model name;
 if it says U3, use a different stick.
 
-### Tested on the car
-
-| Drive | Size | Cluster | U3 | Result |
-|-------|------|---------|-----|--------|
-| "cMobile Line" | 64.5 GB | 32 KB | no | works |
-| JetFlash "Transcend 2GB" | 2.0 GB | 4 KB | no | works |
-| SanDisk "U3 Titanium" | 2.0 GB | 4 KB | **yes** | **never triggers** |
-
-The Transcend and the SanDisk share both capacity and cluster size, so the U3 property is
-the only remaining difference.
-
 ### Dead ends — don't waste time on these
 
 All of the following were tested on the car and made **no** difference:
