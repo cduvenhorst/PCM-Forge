@@ -82,6 +82,58 @@ Interface: en5 (same as Audi MMI3G+)
 
 See [research/PCM31_CONNECTIVITY.md](research/PCM31_CONNECTIVITY.md) for the full LTE restoration guide including hardware list, network architecture, and what online services may still work.
 
+## Choosing a USB Stick
+
+**The stick itself is the most common reason nothing happens.** If you insert the stick and
+the PCM shows no status screen and writes no `pcm_ran.txt`, the stick is the first thing to
+suspect — not your files.
+
+**What works:** an ordinary USB 2.0 flash drive, FAT32, MBR partitioning. **Capacity does not
+matter** — a 2 GB drive works as well as a 64 GB one. Neither does cluster size, and you do
+not need to format it in any special way. Any plain stick you would put music on is fine.
+
+**What does not work: U3 drives.** SanDisk's U3 models (and any drive that presents a second,
+CD-ROM-like unit for auto-start software) are not recognised. The PCM's QNX mass-storage
+driver never reaches the data partition, so the autorun silently never fires. You cannot fix
+this by reformatting — the problem sits below the file system. Check the drive's model name;
+if it says U3, use a different stick.
+
+### Tested on the car
+
+| Drive | Size | Cluster | U3 | Result |
+|-------|------|---------|-----|--------|
+| "cMobile Line" | 64.5 GB | 32 KB | no | works |
+| JetFlash "Transcend 2GB" | 2.0 GB | 4 KB | no | works |
+| SanDisk "U3 Titanium" | 2.0 GB | 4 KB | **yes** | **never triggers** |
+
+The Transcend and the SanDisk share both capacity and cluster size, so the U3 property is
+the only remaining difference.
+
+### Dead ends — don't waste time on these
+
+All of the following were tested on the car and made **no** difference:
+
+- **Drive capacity.** A 2 GB drive triggers the autorun just fine.
+- **Cluster size.** 4 KB works; you do not need 32 KB.
+- **MBR partition type.** The PCM mounts both `0x0B` and `0x0C` (it names the device
+  `/dev/umass/usb…t11` and `…t12` respectively).
+- **Partition offset.** 128 sectors and 2048 sectors both work.
+- **macOS metadata.** `._*` AppleDouble files, `.Spotlight-V100`, `.Trashes` and
+  `System Volume Information` are harmless — a drive full of them works.
+- **Other files on the stick.** Music, photos and unrelated folders do not interfere.
+
+### If you build the stick on macOS
+
+Everything works out of the box, but two conveniences:
+
+```sh
+dot_clean -m /Volumes/YOUR_STICK   # removes the ._* companion files
+diskutil eject /Volumes/YOUR_STICK
+```
+
+Insert the stick **only after the PCM has finished booting** (home screen visible). A drive
+already present at power-on is treated as plain media storage and the script never runs.
+
 ## ⚡ Quick Start
 
 > **Important:** Always use the [web app](https://dspl1236.github.io/PCM-Forge/) to build your USB stick. Do NOT download `copie_scr.sh` directly from GitHub — the PCM requires a special XOR-encoded version that only the web app generates. Raw files from the repo will not trigger the autorun.
