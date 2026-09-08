@@ -1,3 +1,6 @@
 # Python bytecode (from builder/generate_manifest.py)
 __pycache__/
 *.pyc
+
+# Arbeitsnotizen: offene Punkte und Messergebnisse, nicht Teil des Projekts
+Todo.md
