@@ -15,7 +15,7 @@ Usage:
   python generate_codes.py --diag <USB_PATH>         # diagnostic stick (no VIN needed)
   python generate_codes.py --show <PATH>             # decode an existing PagSWAct.002
   python generate_codes.py <USB_PATH> --from-backup  # rebuild from the car's backup
-  python generate_codes.py <VIN> <USB_PATH> --from-backup --add TEL
+  python generate_codes.py <USB_PATH> --from-backup --add TEL  # VIN read off the stick
   python generate_codes.py <VIN> --show <PATH>       # ...and check it belongs to that VIN
   python generate_codes.py --list-models             # show available models
   python generate_codes.py --list-features           # show feature names
@@ -743,6 +743,57 @@ def resolve_model(args):
     return 0x0003, '911 (991) Carrera [default — use --model for others]'
 
 
+def vin_from_diagnostics(usb_path):
+    """Recover the car's VIN from what a diagnostic run left on the stick.
+
+    run_diag.sh copies /HBpersistence/vin to pcm_dump_<stamp>/vin and also
+    prints it into pcm_debug_<stamp>.log, so after --diag the VIN is already
+    on the stick and nobody needs to type it. Returns (vin, source) or
+    (None, None).
+
+    Whatever is found still goes through validate_vin: the unit answers with a
+    diagnostic line rather than a VIN when the file is missing, and that must
+    not be mistaken for one.
+    """
+    if not os.path.isdir(usb_path):
+        return None, None
+
+    def usable(text):
+        try:
+            return validate_vin(text.strip())
+        except ValueError:
+            return None
+
+    # The plain copy first -- it holds the VIN and nothing else.
+    for name in sorted(os.listdir(usb_path)):
+        if not name.startswith('pcm_dump'):
+            continue
+        candidate = os.path.join(usb_path, name, 'vin')
+        if os.path.isfile(candidate):
+            with open(candidate, encoding='utf-8', errors='replace') as f:
+                vin = usable(f.read())
+            if vin:
+                return vin, os.path.join(name, 'vin')
+
+    # Otherwise the "=== VIN ===" section of the log.
+    for name in sorted(os.listdir(usb_path)):
+        if not (name.startswith('pcm_debug') and name.endswith('.log')):
+            continue
+        with open(os.path.join(usb_path, name), encoding='utf-8',
+                  errors='replace') as f:
+            lines = f.read().splitlines()
+        for i, line in enumerate(lines):
+            if line.strip() != '=== VIN ===':
+                continue
+            for following in lines[i + 1:]:
+                if not following.strip() or following.startswith('==='):
+                    break
+                vin = usable(following)
+                if vin:
+                    return vin, name
+    return None, None
+
+
 def build_from_backup(args):
     """Rebuild a stick as an activation stick, seeded from the car's backup."""
     # The VIN is optional here but the path is not, so a lone positional can
@@ -764,8 +815,14 @@ def build_from_backup(args):
     names = split_feature_names(args.add or args.remove or [])
     if names:
         if not vin_arg:
+            # The diagnostic run already put the VIN on the stick.
+            vin_arg, found_in = vin_from_diagnostics(usb_path)
+            if vin_arg and not args.quiet:
+                print(f"\n  Using VIN {vin_arg} from {found_in}")
+        if not vin_arg:
             print("Error: --add/--remove with --from-backup need the VIN, "
-                  "so the new codes can be signed.", file=sys.stderr)
+                  "so the new codes can be signed. Run --diag first and it "
+                  "will be read from the stick.", file=sys.stderr)
             return 1
         try:
             vin = validate_vin(vin_arg)

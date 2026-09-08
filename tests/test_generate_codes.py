@@ -1023,3 +1023,92 @@ class TestShowNamesTheModel:
         capsys.readouterr()
         gc.main(['--show', str(tmp_path)])
         assert 'variant' in self._row(capsys, 'NavDBEurope').lower()
+
+
+REAL_VIN = 'WP0ZZZ98ZFS110814'          # from a diagnostic run on a 981 Boxster
+
+
+def write_diag_output(tmp_path, vin=REAL_VIN, in_dump=True, in_log=True,
+                      stamp='nodate'):
+    """Recreate what run_diag.sh leaves on a stick."""
+    if in_dump:
+        d = tmp_path / f'pcm_dump_{stamp}'
+        d.mkdir(exist_ok=True)
+        (d / 'vin').write_text(vin + '\n')
+    if in_log:
+        (tmp_path / f'pcm_debug_{stamp}.log').write_text(
+            '=== PCM Version ===\nPorsche_PCM3.1\n\n'
+            f'=== VIN ===\n{vin}\n\n'
+            '=== Existing Activation Files ===\n-rw-r--r-- PagSWAct.002\n')
+
+
+class TestVinFromDiagnostics:
+    """The diagnostic run copies /HBpersistence/vin onto the stick, so the VIN
+    is already there and need not be typed again."""
+
+    def test_reads_the_copy_in_the_dump_directory(self, tmp_path):
+        write_diag_output(tmp_path, in_log=False)
+        vin, source = gc.vin_from_diagnostics(str(tmp_path))
+        assert vin == REAL_VIN and 'vin' in source
+
+    def test_falls_back_to_the_log(self, tmp_path):
+        write_diag_output(tmp_path, in_dump=False)
+        vin, source = gc.vin_from_diagnostics(str(tmp_path))
+        assert vin == REAL_VIN and 'pcm_debug' in source
+
+    def test_prefers_the_dump_copy_over_the_log(self, tmp_path):
+        write_diag_output(tmp_path)
+        (tmp_path / 'pcm_dump_nodate' / 'vin').write_text('WP1ZZZ92ZFLA12345\n')
+        vin, source = gc.vin_from_diagnostics(str(tmp_path))
+        assert vin == 'WP1ZZZ92ZFLA12345', source
+
+    def test_tolerates_trailing_whitespace(self, tmp_path):
+        write_diag_output(tmp_path, in_log=False)
+        (tmp_path / 'pcm_dump_nodate' / 'vin').write_text(f'  {REAL_VIN}  \r\n')
+        assert gc.vin_from_diagnostics(str(tmp_path))[0] == REAL_VIN
+
+    def test_nothing_to_find_is_not_an_error(self, tmp_path):
+        assert gc.vin_from_diagnostics(str(tmp_path)) == (None, None)
+
+    def test_rejects_an_error_message_in_place_of_a_vin(self, tmp_path):
+        # The unit answers with a diagnostic line when the file is missing.
+        (tmp_path / 'pcm_dump_nodate').mkdir()
+        (tmp_path / 'pcm_dump_nodate' / 'vin').write_text(
+            'cat: No such file or directory (/HBpersistence/vin)\n')
+        assert gc.vin_from_diagnostics(str(tmp_path)) == (None, None)
+
+    def test_rejects_a_structurally_invalid_vin(self, tmp_path):
+        write_diag_output(tmp_path, vin='WP0IZZ98ZFS110814', in_log=False)
+        assert gc.vin_from_diagnostics(str(tmp_path)) == (None, None)
+
+
+class TestFromBackupUsesTheDetectedVin:
+    def test_adding_needs_no_typed_vin_after_a_diagnostic_run(self, tmp_path):
+        make_diag_stick(tmp_path, vin=REAL_VIN)
+        write_diag_output(tmp_path)
+        assert gc.main([str(tmp_path), '--from-backup', '--add', 'SDARS',
+                        '--quiet']) == 0
+        assert 0x0108 in [r[0] for r in records(tmp_path / 'PagSWAct.002')]
+
+    def test_says_where_the_vin_came_from(self, tmp_path, capsys):
+        make_diag_stick(tmp_path, vin=REAL_VIN)
+        write_diag_output(tmp_path)
+        gc.main([str(tmp_path), '--from-backup', '--add', 'SDARS'])
+        out = capsys.readouterr()
+        assert REAL_VIN in out.out + out.err
+
+    def test_a_typed_vin_still_wins(self, tmp_path):
+        make_diag_stick(tmp_path, vin=VIN)
+        write_diag_output(tmp_path, vin=REAL_VIN)   # a different car on the stick
+        # The typed VIN matches the backup, the detected one does not.
+        assert gc.main([VIN, str(tmp_path), '--from-backup', '--add', 'SDARS',
+                        '--quiet']) == 0
+
+    def test_a_detected_vin_is_still_checked_against_the_backup(self, tmp_path):
+        make_diag_stick(tmp_path, vin=VIN)          # backup signed for one car
+        write_diag_output(tmp_path, vin=REAL_VIN)   # stick reports another
+        assert gc.main([str(tmp_path), '--from-backup', '--add', 'SDARS']) == 1
+
+    def test_without_diagnostics_it_still_asks_for_a_vin(self, tmp_path):
+        make_diag_stick(tmp_path)
+        assert gc.main([str(tmp_path), '--from-backup', '--add', 'SDARS']) == 1

@@ -193,11 +193,14 @@ The usual round trip, once per car:
 ```sh
 python generate_codes.py --diag /Volumes/STICK        # 1. pull the car's current state
 python generate_codes.py --show /Volumes/STICK        # 2. read what came back
-python generate_codes.py <VIN> /Volumes/STICK --from-backup --add SDARS,TEL   # 3. add to it
+python generate_codes.py /Volumes/STICK --from-backup --add SDARS,TEL          # 3. add to it
 ```
 
-Step 1 needs no VIN — which matters, because with a used head unit the diagnostic run is how
-you find out which VIN it holds. `--from-backup` keeps everything the car already had and
+None of those three needs you to type a VIN. The diagnostic run copies the car's own VIN onto
+the stick, and step 3 reads it back from there — which matters with a used head unit, where
+the diagnostic run is how you find out what VIN it holds in the first place. Pass one
+explicitly if you want to override it; either way it is checked against the backup, so codes
+from two different cars cannot end up in one file. `--from-backup` keeps everything the car already had and
 adds to it, instead of replacing the lot.
 
 A VIN is checked against ISO 3779/3780 before anything is generated: 17 characters, no I, O or
