@@ -278,22 +278,31 @@ Note: Unlike Audi MMI3G+ which uses Java/J9 for the UI, PCM 3.1 uses a native C+
 
 ```
 PCM-Forge/
-├── docs/                        # GitHub Pages site
+├── docs/                        # GitHub Pages site (client-side, no build)
 │   ├── index.html               #   Web app (Activation, USB Stick, Toolkit, Backup)
-│   └── app/manifest.json        #   Auto-generated module index (built from modules/)
+│   ├── app/manifest.json        #   Auto-generated module index (built from modules/)
+│   ├── bootscreens/             #   Boot-logo PNGs offered in the USB builder
+│   └── fonts/                   #   Self-hosted webfonts
 ├── modules/                     # Toolkit modules — each a self-contained USB tool
 │   ├── bt-aux-fix/              #   FM->A2DP boot fix (module.json + scripts/ + bin/)
 │   ├── usb-net/                 #   universal ASIX USB-ethernet
 │   └── sysinfo/ telnet/ ioc-probe/ service-reset/ lte-setup/
 ├── builder/generate_manifest.py # Regenerates docs/app/manifest.json from modules/
-├── core/                        # Shared assets (copie_scr.sh, showScreen, status PNGs)
+├── core/                        # Shared USB payload assets
+│   ├── bin/                     #   SH4 helpers (showScreen, forge_splash, ndr_probe)
+│   └── lib/                     #   status images (running/done/activating .png + .bin)
+├── generate_codes.py            # CLI code generator — byte-for-byte parity with the web app
+├── payloads/                    # ksh scripts the CLI writes to the stick (run_*.sh)
+├── tests/test_generate_codes.py # pytest: web-app parity + factory-code check
 ├── research/                    # 30+ reverse engineering docs (+ firmware/ Ghidra output)
 │   ├── ALGORITHM_CRACKED.md     #   RSA-64 key recovery
 │   ├── DISCOVERY_NARRATIVE.md   #   Full RE story
 │   └── PCM31_CONNECTIVITY.md    #   LTE restoration guide
-├── tools/                       # Firmware analysis utilities
-├── generate_codes.py            # CLI activation-code generator
-└── FEATURES.md                  # Feature quick reference
+├── tools/                       # Host-side RE & firmware-analysis utilities
+├── PCM4/                        # Separate PCM 4 / MIB2 research subtree (own README)
+├── CLAUDE.md                    # Repo guide & safety conventions for contributors
+├── FEATURES.md                  # Feature quick reference
+└── LICENSE
 ```
 
 ## Research Highlights
