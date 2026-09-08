@@ -175,6 +175,7 @@ python generate_codes.py <VIN>                              # print all 27 codes
 python generate_codes.py <VIN> <USB_PATH>                   # build an activation stick
 python generate_codes.py --diag <USB_PATH>                  # build a diagnostic stick
 python generate_codes.py --show <PATH>                      # decode a PagSWAct.002
+python generate_codes.py <USB_PATH> --from-backup           # rebuild from the car's own backup
 python generate_codes.py --list-models                      # model keys for --model
 python generate_codes.py --list-features                    # feature names
 ```
@@ -182,8 +183,9 @@ python generate_codes.py --list-features                    # feature names
 | Flag | What it does |
 |------|--------------|
 | `--model KEY` | Sets the FeatureLevel, which is the boot logo and model identity |
+| `--featlevel-subid HEX` | The same thing by number, for a model the table does not list |
 | `--add`, `--remove` | Edit features in an existing `PagSWAct.002`; comma-separated, repeatable |
-| `--from-backup [FILE]` | Rebuild an activation stick from the car's own backup |
+| `--from-backup [FILE]` | Rebuild an activation stick from the car's own backup, reading the VIN off the stick; name the file when several backups are present |
 | `--subid NAME=HEX` | Pick a non-default variant of a feature (map index, region) |
 | `--no-xor` | Write `copie_scr.sh` unencoded — for inspection only, the PCM will not run it |
 | `--quiet` | Codes only, no headings |
