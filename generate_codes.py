@@ -62,6 +62,11 @@ For unknown models (Macan 95B, GT3/GT2):
 """
 import struct, sys, os, argparse
 
+# RSA parameters recovered from CPPorscheEncrypter::verify in the PCM3Root
+# firmware (research/ALGORITHM_CRACKED.md). N and E sit in the binary as hex
+# strings at 0x082270b4 and 0x082270b8; D is not in the firmware -- at 63 bits
+# the modulus factors in seconds (1831263461 x 4169044001), which is what makes
+# generating codes possible at all. The unit only ever verifies, using E.
 N = 0x69f39c927ef94985
 E = 0x4c1c5eeaf397c0b3
 D = 0x5483975015d0287b
@@ -171,6 +176,15 @@ def features_for(featlvl_subid, subid_overrides=None):
     research/firmware/PagSWAct.csv.
     """
     featlvl_hex = f"010e{featlvl_subid:04x}"
+    # (name, feature hex, SWID, SubID, description). The feature hex is just
+    # SWID and SubID written out, and it is what gets signed.
+    #
+    # Every SWID here is distinct, which is why --add/--remove can identify a
+    # record by SWID alone; tests/test_generate_codes.py guards that.
+    #
+    # The SubIDs are the variant the factory used most often in
+    # research/firmware/PagSWAct.csv -- SSS, TVINF, OnlineServices and the nav
+    # databases are known to carry others on some cars. --subid picks those.
     feats = [
         ("ENGINEERING",      "010b0000", 0x010b, 0x0000, "Engineering & diagnostic menu"),
         ("BTH",              "010a0000", 0x010a, 0x0000, "Bluetooth telephony"),
@@ -213,9 +227,19 @@ def features_for(featlvl_subid, subid_overrides=None):
 
 
 def vin_to_number(vin):
-    """Weighted-sum VIN → integer, matching CPPorscheEncrypter::vinToNumber."""
+    """Weighted-sum VIN -> integer, matching CPPorscheEncrypter::vinToNumber.
+
+    Only eight of the seventeen characters count. Position 8 (the North
+    American check digit) and position 10 (the plant code) are skipped, so
+    two cars from different plants can share a hash -- the value identifies a
+    car well enough for the unit's purposes, but it is not a VIN in disguise
+    and cannot be turned back into one.
+    """
     vl = vin.lower()
     positions = [7, 9, 11, 12, 13, 14, 15, 16]
+    # Weight starts at 10, not 1: the firmware consumes one round on the
+    # string's terminating null before reaching the first digit. It is then
+    # truncated to 16 bits every round, so it wraps rather than growing.
     result, weight = 0, 10
     for pos in reversed(positions):
         c = vl[pos]
@@ -232,28 +256,27 @@ def vin_to_number(vin):
     return result
 
 def interleave(a, b):
-    """Character-by-character interleave (NOT concatenation)."""
+    """Weave two 8-character hex strings into one 16-character string.
+
+    a0 b0 a1 b1 ... -- not concatenation. Getting this wrong yields a
+    plausible-looking code that the unit rejects, so it is worth stating.
+    """
     return ''.join(a[i] + b[i] for i in range(8))
 
 def generate_code(vin, feat_hex):
-    """Generate a single 16-char activation code for a (VIN, feature) pair."""
+    """Generate the 16-character activation code for a (VIN, feature) pair.
+
+    The plaintext cannot overflow the 63-bit modulus: its top hex digit is
+    feat_hex[0], which is '0' or '2' across every feature, so the value stays
+    below 0x3000000000000000 < N. Verified against 487 factory codes.
+    """
     vh = f"{vin_to_number(vin):08x}"
     pt = int(interleave(feat_hex, vh), 16)
     return f"{pow(pt, D, N):016x}"
 
 def build_pagswact(vin, features):
-    """Pack all feature codes into the 28-byte-per-record PagSWAct.002 format."""
-    data = bytearray()
-    for name, feat_hex, swid, subid, desc in features:
-        code = generate_code(vin, feat_hex)
-        rec = bytearray(28)
-        for i, c in enumerate(code[:16]): rec[i] = ord(c)
-        struct.pack_into('<H', rec, 18, swid)
-        struct.pack_into('<H', rec, 20, subid)
-        rec[22] = 1
-        struct.pack_into('<I', rec, 24, 1)
-        data.extend(rec)
-    return bytes(data)
+    """Pack a whole feature list into PagSWAct.002 form."""
+    return b''.join(build_record(vin, f[1], f[2], f[3]) for f in features)
 
 # XOR PRNG cipher -- matches proc_scriptlauncher in the PCM 3.1 / MMI3G firmware.
 # The launcher XOR-decodes copie_scr.sh before running it, so a plaintext script
@@ -329,7 +352,12 @@ def parse_subid_overrides(values, valid_names):
 
 
 def load_records(path):
-    """Read PagSWAct.002 into a list of (swid, 28-byte record)."""
+    """Read PagSWAct.002 into a list of (swid, record).
+
+    A length that is not a whole number of records means the file is not what
+    it claims to be -- refuse it rather than parse a prefix and silently drop
+    the tail.
+    """
     with open(path, 'rb') as f:
         data = f.read()
     if not data or len(data) % 28:
@@ -340,16 +368,32 @@ def load_records(path):
         recs.append((struct.unpack_from('<H', rec, 18)[0], rec))
     return recs
 
+# One activation record as PCM3Root reads it back out of flash
+# (research/DISCOVERY_NARRATIVE.md):
+#
+#   offset  size  field
+#   0x00      16  activation code, ASCII hex
+#   0x10       2  padding, zero
+#   0x12       2  SWID, uint16 LE      -- which feature
+#   0x14       2  SubID, uint16 LE     -- which variant of it
+#   0x16       1  active flag, 1 = on
+#   0x17       1  padding, zero
+#   0x18       4  count, uint32 LE, always 1
+#
+# SWID and SubID appear twice over: in the clear here, and inside the signed
+# code. The unit compares the two, so editing the header alone gets a record
+# rejected -- which is what --show checks for.
+RECORD_SIZE = 28
+
 def build_record(vin, feat_hex, swid, subid):
-    """Pack one feature into its 28-byte activation record."""
+    """Pack one feature into its activation record."""
     code = generate_code(vin, feat_hex)
-    rec = bytearray(28)
-    for i, c in enumerate(code[:16]):
-        rec[i] = ord(c)
-    struct.pack_into('<H', rec, 18, swid)
-    struct.pack_into('<H', rec, 20, subid)
-    rec[22] = 1
-    struct.pack_into('<I', rec, 24, 1)
+    rec = bytearray(RECORD_SIZE)
+    rec[0:16] = code[:16].encode('ascii')
+    struct.pack_into('<H', rec, 0x12, swid)
+    struct.pack_into('<H', rec, 0x14, subid)
+    rec[0x16] = 1
+    struct.pack_into('<I', rec, 0x18, 1)
     return rec
 
 
@@ -357,7 +401,13 @@ CORE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core')
 SPLASH_ASSETS = [('bin', 'forge_splash'), ('lib', 'running.bin'), ('lib', 'done.bin')]
 
 def write_usb(out, run_sh, xor=True, pagswact=None):
-    """Write the three-file USB payload plus the splash assets to `out`."""
+    """Write the three-file USB payload plus the splash assets to `out`.
+
+    Nothing here deletes: a stick may already hold diagnostic logs, music or
+    a previous backup, and all of that stays. Missing splash assets are
+    skipped silently -- they only drive the on-screen status, so their
+    absence must not stop a stick from being built.
+    """
     os.makedirs(out, exist_ok=True)
     boot = BOOTSTRAP.encode('utf-8')
     with open(os.path.join(out, 'copie_scr.sh'), 'wb') as f:
@@ -440,7 +490,11 @@ def find_backup(usb_path, explicit=''):
                      f"pass one to --from-backup:\n    {listing}")
 
 def backup_vin_hash(recs):
-    """The VIN hash every record in a set was signed for, or None if mixed."""
+    """The VIN hash every record was signed for, or None if they disagree.
+
+    None also covers the empty case. Callers treat it as "cannot tell" and
+    skip the VIN check rather than assume a match.
+    """
     hashes = set()
     for _swid, rec in recs:
         try:
@@ -464,6 +518,9 @@ def split_feature_names(values):
 
 def resolve_pagswact(path):
     """Accept the file itself, or a directory holding it.
+
+    Used by --show, which should read whatever is on a stick. Contrast
+    find_backup, which deliberately looks only for the car's own backup.
 
     A diagnostic run leaves the unit's own activation file as
     PagSWAct_backup_<stamp>.002, so a stick often has no plain PagSWAct.002.
@@ -495,6 +552,8 @@ def show_pagswact(path, vin=None):
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # Any FeatureLevel SubID does here: this lookup is by SWID, and only the
+    # FeatureLevel entry's SubID depends on the model.
     known = {f[2]: f for f in features_for(0x0003)}
     print(f"\n  {target}")
     print(f"  {len(recs)} feature(s), {len(recs) * 28} bytes\n")
@@ -635,6 +694,7 @@ def build_from_backup(args):
 
 
 def list_models():
+    """Print the model keys accepted by --model."""
     print("\n  Available model keys for --model:\n")
     print(f"  {'Key':<18s} {'SubID':<8s} {'Description'}")
     print(f"  {'-'*18}  {'-'*6}  {'-'*40}")
@@ -643,6 +703,7 @@ def list_models():
     print("\n  For unknown variants, use: --featlevel-subid 0xNNNN\n")
 
 def list_features():
+    """Print the feature names accepted by --add/--remove/--subid."""
     print("\n  Feature names for --add / --remove:\n")
     print(f"  {'Name':<20s} {'SWID':<8s} {'Description'}")
     print(f"  {'-'*20}  {'-'*6}  {'-'*40}")
@@ -693,6 +754,12 @@ def parse_args(argv):
     return p.parse_args(argv)
 
 def main(argv=None):
+    """Dispatch to a mode, or list codes and optionally write a stick.
+
+    Returns a process exit code: 0 on success, 1 for anything the user can
+    fix. Argument errors below the argparse level are reported here rather
+    than raised, so the CLI never shows a traceback for bad input.
+    """
     args = parse_args(argv or sys.argv[1:])
 
     if args.list_models:
