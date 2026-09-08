@@ -92,11 +92,13 @@ suspect — not your files.
 matter** — a 2 GB drive works as well as a 64 GB one. Neither does cluster size, and you do
 not need to format it in any special way. Any plain stick you would put music on is fine.
 
-**What does not work: U3 drives.** SanDisk's U3 models (and any drive that presents a second,
-CD-ROM-like unit for auto-start software) are not recognised. The PCM's QNX mass-storage
-driver never reaches the data partition, so the autorun silently never fires. You cannot fix
-this by reformatting — the problem sits below the file system. Check the drive's model name;
-if it says U3, use a different stick.
+**What does not work:** a drive that announces itself as more than one device — SanDisk's
+old U3 sticks are the classic example, presenting a virtual CD-ROM for their auto-start
+software alongside the data partition — because this generation's QNX mass-storage driver
+appears to stop at the first unit it finds and never mounts the one your files are on. The
+symptom is silence: the stick may not even show up as a media source, and nothing is written
+back to it. Reformatting cannot help, since the problem sits below the file system; use a
+plain drive instead.
 
 ### Dead ends — don't waste time on these
 
