@@ -229,13 +229,15 @@ def features_for(featlvl_subid, subid_overrides=None):
 def vin_to_number(vin):
     """Weighted-sum VIN -> integer, matching CPPorscheEncrypter::vinToNumber.
 
-    Only eight of the seventeen characters count. Position 8 (the North
-    American check digit) and position 10 (the plant code) are skipped, so
-    two cars from different plants can share a hash -- the value identifies a
-    car well enough for the unit's purposes, but it is not a VIN in disguise
-    and cannot be turned back into one.
+    Only eight of the seventeen characters count: VIN positions 8, 10 and
+    12-17, counting from 1 as VIN positions are normally numbered. Position 9
+    (the North American check digit) and position 11 (the plant code) are
+    skipped, so two cars from different plants can share a hash -- the value
+    identifies a car well enough for the unit's purposes, but it is not a VIN
+    in disguise and cannot be turned back into one.
     """
     vl = vin.lower()
+    # Zero-based indices, i.e. VIN positions 8, 10 and 12-17.
     positions = [7, 9, 11, 12, 13, 14, 15, 16]
     # Weight starts at 10, not 1: the firmware consumes one round on the
     # string's terminating null before reaching the first digit. It is then
@@ -496,8 +498,9 @@ def vin_advisories(vin):
 
     # Only verify the check digit where there is one. A European VIN could in
     # principle carry a digit here without it being a check digit, so this
-    # stays a note -- but position 9 feeds the VIN hash, so a typo there
-    # changes every generated code.
+    # stays a note. The digit itself is not part of the VIN hash -- correcting
+    # it would not move a single code -- but it is computed over the whole VIN,
+    # so it catches typos in the eight positions that do feed the hash.
     if vin[8].isdigit() or vin[8] == 'X':
         want = vin_check_digit(vin)
         if want is not None and want != vin[8]:
