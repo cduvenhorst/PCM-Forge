@@ -278,6 +278,26 @@ class TestListFeatures:
             assert name in out
 
 
+class TestCodeListing:
+    def test_header_counts_the_features_it_lists(self, capsys):
+        assert gc.main([VIN]) == 0
+        out = capsys.readouterr().out
+        assert f"All {len(gc.features_for(0x0003))} Activation Codes" in out
+
+    def test_default_model_label_matches_the_model_table(self, capsys):
+        assert gc.main([VIN]) == 0
+        label = next(desc for sub, desc in gc.MODELS.values() if sub == 0x0003)
+        assert label in capsys.readouterr().out
+
+    def test_output_is_ascii_for_legacy_consoles(self, capsys, tmp_path):
+        # A cp1252 or cp437 console garbles non-ASCII punctuation.
+        assert gc.main([VIN]) == 0
+        assert gc.main([VIN, str(tmp_path)]) == 0
+        assert gc.main([VIN, str(tmp_path), '--add', 'TEL']) == 0
+        out = capsys.readouterr().out
+        assert out.isascii(), [c for c in out if not c.isascii()]
+
+
 class TestVinToNumber:
     """The firmware works on ASCII bytes; Python's Unicode-aware character
     tests must not make us diverge from it (or from the web app)."""

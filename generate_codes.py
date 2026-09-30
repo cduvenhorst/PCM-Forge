@@ -39,23 +39,10 @@ proc_scriptlauncher expects), run.sh, PagSWAct.002 and the splash assets.
 --no-xor writes the bootstrap as plaintext; it is for testing only, since the
 PCM's launcher XOR-decodes the file and a plaintext script decodes to garbage.
 
-Model keys (for correct FeatureLevel / boot logo):
-  cayenne-958      Cayenne 958 base                        (SubID 0x0039)
-  cayenne-958s     Cayenne 958 S                           (SubID 0x003a)
-  cayenne-958t     Cayenne 958 Turbo                       (SubID 0x003b)
-  cayenne-958ts    Cayenne 958 Turbo S                     (SubID 0x003c)
-  cayenne-958gts   Cayenne 958 GTS                         (SubID 0x003d)
-  cayenne-958sh    Cayenne 958 S Hybrid                    (SubID 0x003e)
-  cayenne-958-v6   Cayenne 958 V6                          (SubID 0x003f)
-  cayenne-958se    Cayenne 958 S E-Hybrid                  (SubID 0x0043)  [Andrew's car!]
-  991              911 (991) Carrera                        (SubID 0x0003)  [default]
-  991-base         911 (991) base variant                 (SubID 0x0000)
-  991t             911 (991) Turbo                        (SubID 0x0005)
-  boxster-cayman   Boxster / Cayman (981)                 (SubID 0x0007)
-  997              911 (997) Carrera                      (SubID 0x002a)
-  panamera         Panamera (970) V8                      (SubID 0x002d)
-  997t             911 (997) Turbo                        (SubID 0x002e)
-  997-alt          911 (997) alternate coding             (SubID 0x0031)
+Model keys (for correct FeatureLevel / boot logo): run --list-models for the
+full table. Examples: cayenne-alt (0x0039), cayenne-s (0x003a), 911-991-gts
+(0x0016), panamera-4s (0x002d). Without --model the FeatureLevel SubID
+defaults to 0x0003, 911 (997) Carrera S.
 
 For unknown models (Macan 95B, GT3/GT2):
   Pass --featlevel-subid 0xNNNN with the known SubID for that vehicle.
@@ -749,7 +736,7 @@ def resolve_model(args):
             raise ValueError(f"unknown model '{args.model}'. "
                              f"Use --list-models to see options.")
         return MODELS[args.model]
-    return 0x0003, '911 (991) Carrera [default — use --model for others]'
+    return 0x0003, '911 (997) Carrera S [default -- use --model for others]'
 
 
 def vin_from_diagnostics(usb_path):
@@ -1036,11 +1023,11 @@ def main(argv=None):
         if not args.quiet:
             verb = 'Added' if args.add else 'Removed'
             listing = ', '.join(m[0] for m in matches)
-            print(f"\n  {verb} {listing} — {target} now holds {len(recs)} features")
+            print(f"\n  {verb} {listing} -- {target} now holds {len(recs)} features")
         return 0
 
     if not args.quiet:
-        print(f"\n  PCM-Forge — All 26 Activation Codes")
+        print(f"\n  PCM-Forge -- All {len(features)} Activation Codes")
         print(f"  VIN:   {vin}")
         print(f"  Model: {model_desc}\n")
 
