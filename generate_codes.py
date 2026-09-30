@@ -859,6 +859,12 @@ def build_from_backup(args):
             return 1
         recs = apply_feature_edits(recs, matches, vin, adding=bool(args.add))
 
+    if not recs:
+        print("Error: that would remove every feature and leave an empty "
+              "PagSWAct.002, which switches every activated feature off in "
+              "the car. Refusing.", file=sys.stderr)
+        return 1
+
     target = os.path.join(usb_path, 'PagSWAct.002')
     replacing = os.path.exists(target)
     if replacing and not args.quiet:
@@ -1008,7 +1014,22 @@ def main(argv=None):
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+        # The file was signed for one car; new codes we add are signed for
+        # `vin`. Refuse before writing when those disagree, so two cars cannot
+        # end up in one file -- the same guard the --from-backup path applies.
+        signed_for = backup_vin_hash(recs)
+        ours = f"{vin_to_number(vin):08x}"
+        if signed_for and signed_for != ours:
+            print(f"Error: {target} is signed for VIN hash {signed_for}, "
+                  f"but {vin} hashes to {ours}. Mixing codes from two cars "
+                  f"would give a file the PCM rejects.", file=sys.stderr)
+            return 1
         recs = apply_feature_edits(recs, matches, vin, adding=bool(args.add))
+        if not recs:
+            print("Error: that would remove every feature and leave an empty "
+                  "PagSWAct.002, which switches every activated feature off in "
+                  "the car. Refusing.", file=sys.stderr)
+            return 1
         with open(target, 'wb') as f:
             for _, rec in recs:
                 f.write(rec)

@@ -209,6 +209,34 @@ class TestAddRemove:
     def test_add_without_a_usb_path_is_an_error(self):
         assert gc.main([VIN, '--quiet', '--add', 'TEL']) == 1
 
+    def test_add_with_a_vin_from_another_car_is_refused(self, tmp_path, capsys):
+        """The file is signed for one car; a code for another would mix them."""
+        gc.main([VIN, str(tmp_path), '--quiet'])
+        assert gc.main([OTHER_VIN, str(tmp_path), '--quiet', '--add', 'SC']) == 1
+        assert 'VIN' in capsys.readouterr().err
+
+    def test_add_from_another_car_leaves_the_file_unmixed(self, tmp_path):
+        gc.main([VIN, str(tmp_path), '--quiet'])
+        before = (tmp_path / 'PagSWAct.002').read_bytes()
+        gc.main([OTHER_VIN, str(tmp_path), '--quiet', '--add', 'SC'])
+        assert (tmp_path / 'PagSWAct.002').read_bytes() == before
+        assert gc.backup_vin_hash(
+            gc.load_records(str(tmp_path / 'PagSWAct.002'))) is not None
+
+    def test_removing_every_feature_is_refused(self, tmp_path):
+        """An empty file would switch every activated feature off in the car."""
+        gc.main([VIN, str(tmp_path), '--quiet'])
+        all_names = ','.join(f[0] for f in gc.features_for(0x0003))
+        assert gc.main([VIN, str(tmp_path), '--quiet',
+                        '--remove', all_names]) == 1
+
+    def test_refusing_the_full_removal_keeps_the_file(self, tmp_path):
+        gc.main([VIN, str(tmp_path), '--quiet'])
+        before = (tmp_path / 'PagSWAct.002').read_bytes()
+        all_names = ','.join(f[0] for f in gc.features_for(0x0003))
+        gc.main([VIN, str(tmp_path), '--quiet', '--remove', all_names])
+        assert (tmp_path / 'PagSWAct.002').read_bytes() == before
+
 
 class TestDiagnosticMode:
     def test_builds_a_stick_without_a_vin(self, tmp_path):
@@ -779,6 +807,13 @@ class TestFromBackup:
     def test_a_mismatched_vin_writes_nothing(self, tmp_path):
         make_diag_stick(tmp_path)
         gc.main([OTHER_VIN, str(tmp_path), '--from-backup', '--add', 'SDARS'])
+        assert not (tmp_path / 'PagSWAct.002').exists()
+
+    def test_removing_every_backup_feature_is_refused(self, tmp_path):
+        """An edit that empties the set would write a 0-byte PagSWAct.002."""
+        make_diag_stick(tmp_path)  # backup holds Navigation, UMS, BTH
+        assert gc.main([VIN, str(tmp_path), '--from-backup',
+                        '--remove', 'Navigation,UMS,BTH', '--quiet']) == 1
         assert not (tmp_path / 'PagSWAct.002').exists()
 
     def test_missing_backup_is_an_error(self, tmp_path):
