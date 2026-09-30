@@ -1,6 +1,6 @@
 # What PCM-Forge Can Activate
 
-All 26 features the Porsche PCM 3.1 can unlock and what each one actually does in the car.
+All 27 features the Porsche PCM 3.1 can unlock and what each one actually does in the car.
 
 **TL;DR:** If your PCM is PCM 3.1 hardware (Cayenne 958, 911 991.1, Panamera 970, Boxster/Cayman 981, Macan 95B), PCM-Forge can generate a permanent activation code for any of these features. Whether the feature then works depends on whether the physical hardware is present in the car — see the "Hardware required" column.
 
@@ -20,10 +20,11 @@ All 26 features the Porsche PCM 3.1 can unlock and what each one actually does i
 | 10 | DAB Digital Radio | 0x0110 | DAB tuner (EU-spec cars) |
 | 11 | Online Services | 0x0111 | Telematics module + SIM |
 | 12 | Individual Memory (INDMEM) | 0x010d | Memory-seat hardware |
-| 13 | Component Activation (KOMP) | 0x0106 | None |
-| 14 | Feature Base (FB) | 0x0103 | None |
+| 13 | Compass (KOMP) | 0x0106 | None — software-only |
+| 14 | Electronic Logbook (FB) | 0x0103 | None — software-only |
 | 15 | Engineering Menu | 0x010b | None |
-| 16-26 | Navigation map databases | 0x2001-0x200b | Navigation already activated |
+| 16 | Telephone (TEL) | 0x0102 | Telephone module present stock |
+| 17-27 | Navigation map databases | 0x2001-0x200b | Navigation already activated |
 
 ## 1. FeatureLevel — Boot logo / model identity
 
@@ -40,7 +41,7 @@ Porsche's "which car am I?" code. Determines the boot animation, main menu brand
 
 **SWID/SubID:** `0x0101` / `0x0000`
 
-Enables the GPS navigation UI, route planning, turn-by-turn directions. Does NOT include map data (that's activated separately, see #16-26 below).
+Enables the GPS navigation UI, route planning, turn-by-turn directions. Does NOT include map data (that's activated separately, see #17-27 below).
 
 
 **What breaks without it:** The Nav button does nothing or shows "Feature not available." No route guidance, no GPS display.
@@ -137,20 +138,21 @@ Links driver profile to memory seat/mirror/steering column positions. Without th
 
 **Hardware check:** Requires memory-capable seats (electric with memory buttons). Manual or non-memory seats can't use this.
 
-## 13. Component Activation (KOMP)
+## 13. Compass (KOMP)
 
 **SWID/SubID:** `0x0106` / `0x0000`
 
-Internal Porsche field-service code for component protection / theft deterrent matching. Required for the PCM to accept data from other modules in the car (cluster, CAN gateway, BCM).
+KOMP is short for *Kompass*. It enables the digital compass: the widget on the CAR → My Screen page, the cardinal-direction indicator, the compass overlay on the navigation map, and — model-dependent — the heading readout in the instrument cluster. On some cars without navigation (the Macan in particular) the compass appears only once this is activated.
 
+**Not component protection.** The similar-looking *Komponentenschutz* is a separate anti-theft mechanism handled at the gateway/ECU level and is not touched by PCM activation codes. Earlier versions of this file described KOMP that way; that was wrong. See [research/FEATURE_REFERENCE.md](research/FEATURE_REFERENCE.md).
 
-**What breaks without it:** PCM may show "Component protection active" errors, refuse to communicate with other modules, or go into limp-home UI.
-
-## 14. Feature Base (FB)
+## 14. Electronic Logbook (FB)
 
 **SWID/SubID:** `0x0103` / `0x0000`
 
-Internal: boot image / feature-enable baseline. Usually written together with FeatureLevel as part of the first-time PCM matching process.
+FB is short for *Fahrtenbuch*, the Porsche Electronic Logbook. Once activated the PCM records every trip — start and end point, distance, duration — and lets you classify journeys as business or private. It is one of the most obscure features on the unit and mainly of interest in Germany, where company-car drivers must keep a logbook for tax purposes.
+
+The firmware's own engineering menu calls it *DriversLog*. Earlier versions of this file described FB as a "boot image / feature-enable baseline"; that was wrong.
 
 
 ## 15. Engineering Menu
@@ -223,7 +225,17 @@ requires 12 requires 11 — telnet/qconn as well.
 request is a strong inference from `'IgnitionStatus is not valid'` plus the
 observed BCM no-contact error, not something read end-to-end from the FSM.
 
-## 16-26. Navigation Map Databases (11 regions)
+## 16. Telephone (TEL)
+
+**SWID/SubID:** `0x0102` / `0x0000`
+
+Enables the built-in telephone module: the PCM's phone interface, contact management, call history and the phone settings menu. This is the base telephony function and is independent of Bluetooth — #5 BTH adds the wireless side on top of it.
+
+**How to access:** the PHONE button on the PCM.
+
+**Caveat:** TEL does not appear in any of the 27 factory activation records recovered from firmware (`research/firmware/PagSWAct.csv`), so unlike the other entries here its effect has not been observed on a car. It is listed because the SWID sits in the documented range and the web app offers it.
+
+## 17-27. Navigation Map Databases (11 regions)
 
 **SWID/SubID range:** `0x2001-0x200b` / `0x00ff`
 
@@ -259,7 +271,7 @@ PCM-Forge only handles features the PCM itself controls via the `PagSWAct.002` a
 
 ## Real-world usage notes
 
-**If you swapped a used PCM into your car:** You likely need at minimum `FeatureLevel`, `KOMP`, and `FB` regenerated for your VIN. Add `Navigation` + the appropriate regional NavDB if the donor unit didn't have nav active.
+**If you swapped a used PCM into your car:** Regenerate `FeatureLevel` for your VIN first — it carries the model identity. Then add whatever the donor unit had active, plus `Navigation` and the appropriate regional NavDB if it didn't have nav. `KOMP` and `FB` are the compass and the trip logbook; they play no part in matching a PCM to a car, contrary to what earlier versions of this file claimed.
 
 **If you want features your car wasn't spec'd with:** Check which SWIDs are currently active (engineering menu will show this) and generate codes for the ones you want. Hardware-gated features (SDARS, HD Radio, DAB) won't work without the physical tuner regardless of activation.
 

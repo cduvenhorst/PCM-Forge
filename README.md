@@ -82,6 +82,49 @@ Interface: en5 (same as Audi MMI3G+)
 
 See [research/PCM31_CONNECTIVITY.md](research/PCM31_CONNECTIVITY.md) for the full LTE restoration guide including hardware list, network architecture, and what online services may still work.
 
+## Choosing a USB Stick
+
+**The stick itself is the most common reason nothing happens.** If you insert the stick and
+the PCM shows no status screen and writes no `pcm_ran.txt`, the stick is the first thing to
+suspect — not your files.
+
+**What works:** an ordinary USB 2.0 flash drive, FAT32, MBR partitioning. **Capacity does not
+matter** — a 2 GB drive works as well as a 64 GB one. Neither does cluster size, and you do
+not need to format it in any special way. Any plain stick you would put music on is fine.
+
+**What does not work:** a drive that announces itself as more than one device — SanDisk's
+old U3 sticks are the classic example, presenting a virtual CD-ROM for their auto-start
+software alongside the data partition — because this generation's QNX mass-storage driver
+appears to stop at the first unit it finds and never mounts the one your files are on. The
+symptom is silence: the stick may not even show up as a media source, and nothing is written
+back to it. Reformatting cannot help, since the problem sits below the file system; use a
+plain drive instead.
+
+### Dead ends — don't waste time on these
+
+All of the following were tested on the car and made **no** difference:
+
+- **Drive capacity.** A 2 GB drive triggers the autorun just fine.
+- **Cluster size.** 4 KB works; you do not need 32 KB.
+- **MBR partition type.** The PCM mounts both `0x0B` and `0x0C` (it names the device
+  `/dev/umass/usb…t11` and `…t12` respectively).
+- **Partition offset.** 128 sectors and 2048 sectors both work.
+- **macOS metadata.** `._*` AppleDouble files, `.Spotlight-V100`, `.Trashes` and
+  `System Volume Information` are harmless — a drive full of them works.
+- **Other files on the stick.** Music, photos and unrelated folders do not interfere.
+
+### If you build the stick on macOS
+
+Everything works out of the box, but two conveniences:
+
+```sh
+dot_clean -m /Volumes/YOUR_STICK   # removes the ._* companion files
+diskutil eject /Volumes/YOUR_STICK
+```
+
+Insert the stick **only after the PCM has finished booting** (home screen visible). A drive
+already present at power-on is treated as plain media storage and the script never runs.
+
 ## ⚡ Quick Start
 
 > **Important:** Always use the [web app](https://dspl1236.github.io/PCM-Forge/) to build your USB stick. Do NOT download `copie_scr.sh` directly from GitHub — the PCM requires a special XOR-encoded version that only the web app generates. Raw files from the repo will not trigger the autorun.
@@ -119,6 +162,82 @@ If you installed a used PCM from another car, activation codes won't work becaus
 2. Enter the donor VIN in PCM-Forge and activate **ENGINEERING** (GEM)
 3. In the Engineering menu, update the VIN to your car's VIN (under SW Activations)
 4. Re-run PCM-Forge with your real VIN to activate all features
+
+## Command Line
+
+`generate_codes.py` does everything the web app does, from a terminal. Same algorithm, same
+files, same bytes — the test suite checks that byte for byte. Useful for scripting, for
+inspecting a stick that came back from the car, and for anything you would rather not do by
+clicking. Python 3 and the standard library, nothing to install.
+
+```sh
+python generate_codes.py <VIN>                              # print all 27 codes
+python generate_codes.py <VIN> <USB_PATH>                   # build an activation stick
+python generate_codes.py --diag <USB_PATH>                  # build a diagnostic stick
+python generate_codes.py --show <PATH>                      # decode a PagSWAct.002
+python generate_codes.py <USB_PATH> --from-backup           # rebuild from the car's own backup
+python generate_codes.py --list-models                      # model keys for --model
+python generate_codes.py --list-features                    # feature names
+```
+
+| Flag | What it does |
+|------|--------------|
+| `--model KEY` | Sets the FeatureLevel, which is the boot logo and model identity |
+| `--featlevel-subid HEX` | The same thing by number, for a model the table does not list |
+| `--add`, `--remove` | Edit features in an existing `PagSWAct.002`; comma-separated, repeatable |
+| `--from-backup` | Rebuild an activation stick from what the car reported, using the `<USB_PATH>` the diagnostic run wrote — its backup and its VIN. Takes no argument; only when that stick holds several backups, name the one to use: `--from-backup PagSWAct_backup_1234.002` |
+| `--subid NAME=HEX` | Pick a non-default variant of a feature (map index, region) |
+| `--no-xor` | Write `copie_scr.sh` unencoded — for inspection only, the PCM will not run it |
+| `--quiet` | Codes only, no headings |
+
+The usual round trip, once per car:
+
+```sh
+python generate_codes.py --diag /Volumes/STICK        # 1. pull the car's current state
+python generate_codes.py --show /Volumes/STICK        # 2. read what came back
+python generate_codes.py /Volumes/STICK --from-backup --add SDARS,TEL          # 3. add to it
+```
+
+None of those three needs you to type a VIN. The diagnostic run copies the car's own VIN onto
+the stick, and step 3 reads it back from there — which matters with a used head unit, where
+the diagnostic run is how you find out what VIN it holds in the first place. Pass one
+explicitly if you want to override it; either way it is checked against the backup, so codes
+from two different cars cannot end up in one file. `--from-backup` keeps everything the car already had and
+adds to it, instead of replacing the lot.
+
+A VIN is checked against ISO 3779/3780 before anything is generated: 17 characters, no I, O or
+Q, numeric tail. Anything that is merely suspicious — a non-Porsche WMI, a check digit that
+does not add up, a model year outside the PCM 3.1 era — is reported and then ignored, because
+none of those is reliable enough to refuse work over.
+
+### Running the tests
+
+Only needed if you change something. `pytest` is the sole dependency and only the tests use it.
+
+```sh
+pip install pytest
+python -m pytest tests/ -q                                   # all of it, about a third of a second
+python -m pytest tests/ -k factory -v                        # one group
+python -m pytest tests/test_generate_codes.py::TestShow -v   # one class
+```
+
+What the suite is actually guarding:
+
+- **Real factory codes.** `research/firmware/PagSWAct.csv` holds 487 genuine activation codes
+  from 22 cars. The tests decrypt each one with the public exponent — the same operation the
+  head unit performs — and require it to yield its own SWID and VIN hash. This is the only
+  check in the project that does not share the code's own assumptions, so treat a failure here
+  as the algorithm being wrong rather than the test.
+- **Parity with the web app.** Feature names, hex values, the ksh payloads and the encoded
+  bootstrap are compared against `docs/index.html`. Changing one side without the other fails
+  the suite on purpose: the two must emit identical sticks.
+- **Line endings.** `payloads/*.sh` must stay LF. A CRLF that reaches the head unit's shell
+  stops the script dead, and the failure on the car is silent.
+
+If you add a check, sabotage it once before you trust it: break the thing it is meant to catch
+and confirm the test fails. Several tests here passed at first for the wrong reason — a VIN
+whose forbidden letter sat where a different rule caught it first, an assertion that matched
+the temporary directory's name rather than the output.
 
 ## How It Works
 
@@ -159,22 +278,31 @@ Note: Unlike Audi MMI3G+ which uses Java/J9 for the UI, PCM 3.1 uses a native C+
 
 ```
 PCM-Forge/
-├── docs/                        # GitHub Pages site
+├── docs/                        # GitHub Pages site (client-side, no build)
 │   ├── index.html               #   Web app (Activation, USB Stick, Toolkit, Backup)
-│   └── app/manifest.json        #   Auto-generated module index (built from modules/)
+│   ├── app/manifest.json        #   Auto-generated module index (built from modules/)
+│   ├── bootscreens/             #   Boot-logo PNGs offered in the USB builder
+│   └── fonts/                   #   Self-hosted webfonts
 ├── modules/                     # Toolkit modules — each a self-contained USB tool
 │   ├── bt-aux-fix/              #   FM->A2DP boot fix (module.json + scripts/ + bin/)
 │   ├── usb-net/                 #   universal ASIX USB-ethernet
 │   └── sysinfo/ telnet/ ioc-probe/ service-reset/ lte-setup/
 ├── builder/generate_manifest.py # Regenerates docs/app/manifest.json from modules/
-├── core/                        # Shared assets (copie_scr.sh, showScreen, status PNGs)
+├── core/                        # Shared USB payload assets
+│   ├── bin/                     #   SH4 helpers (showScreen, forge_splash, ndr_probe)
+│   └── lib/                     #   status images (running/done/activating .png + .bin)
+├── generate_codes.py            # CLI code generator — byte-for-byte parity with the web app
+├── payloads/                    # ksh scripts the CLI writes to the stick (run_*.sh)
+├── tests/test_generate_codes.py # pytest: web-app parity + factory-code check
 ├── research/                    # 30+ reverse engineering docs (+ firmware/ Ghidra output)
 │   ├── ALGORITHM_CRACKED.md     #   RSA-64 key recovery
 │   ├── DISCOVERY_NARRATIVE.md   #   Full RE story
 │   └── PCM31_CONNECTIVITY.md    #   LTE restoration guide
-├── tools/                       # Firmware analysis utilities
-├── generate_codes.py            # CLI activation-code generator
-└── FEATURES.md                  # Feature quick reference
+├── tools/                       # Host-side RE & firmware-analysis utilities
+├── PCM4/                        # Separate PCM 4 / MIB2 research subtree (own README)
+├── CLAUDE.md                    # Repo guide & safety conventions for contributors
+├── FEATURES.md                  # Feature quick reference
+└── LICENSE
 ```
 
 ## Research Highlights
